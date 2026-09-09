@@ -1,6 +1,12 @@
 """Tests for OS action orchestration using fake backends."""
 
-from src.action_controller import ActionController, CursorSmoother
+from unittest.mock import patch
+
+from src.action_controller import (
+    ActionController,
+    CursorSmoother,
+    PycawVolumeBackend,
+)
 from src.config import CursorConfig, GestureMappingsConfig, ScrollConfig, VolumeConfig
 from src.gesture_classifier import FrameGesture, Gesture
 from src.stabilizer import PinchEvent
@@ -41,6 +47,26 @@ class FakeVolume:
     def set_level(self, level):
         self.level = level
         self.calls.append(level)
+
+
+class TestPycawLazyBackend:
+    def test_construction_does_not_touch_audio_endpoint(self):
+        with patch("pycaw.pycaw.AudioUtilities") as fake:
+            backend = PycawVolumeBackend()
+            fake.GetSpeakers.assert_not_called()
+            assert backend._endpoint is None
+
+    def test_endpoint_acquired_on_first_use(self):
+        endpoint = type(
+            "Endpoint",
+            (),
+            {"GetMasterVolumeLevelScalar": lambda self: 0.5},
+        )()
+        with patch("pycaw.pycaw.AudioUtilities") as fake:
+            fake.GetSpeakers.return_value.EndpointVolume = endpoint
+            backend = PycawVolumeBackend()
+            assert backend.get_level() == 0.5
+            fake.GetSpeakers.assert_called_once()
 
 
 def frame(gesture, pointer=(0.5, 0.5)):
@@ -120,36 +146,79 @@ class TestMouseActions:
         assert position == (250, 400)
         assert self.mouse.calls == [("move", 250, 400)]
 
+    def test_raw_pinch_does_not_move_point_cursor(self):
+        pinch_frame = FrameGesture(
+            gesture=Gesture.POINT,
+            pinch_active=True,
+            pinch_ratio=0.1,
+            pointer=(0.25, 0.5),
+        )
+        self.controller.process(pinch_frame)
+        assert self.mouse.calls == []
+
     def test_click_is_disabled_when_controller_disabled(self):
         self.controller.set_enabled(False)
         assert self.controller.click() is False
         assert self.mouse.calls == []
 
-    def test_short_pinch_event_clicks_once(self):
+    def test_short_pinch_event_clicks_without_moving_cursor(self):
         self.controller.process(frame(Gesture.PINCH), PinchEvent.CLICK)
-        assert self.mouse.calls == [("click",), ("move", 500, 400)]
+        assert self.mouse.calls == [("click",)]
+
+    def test_pinch_hold_before_drag_does_not_move_cursor(self):
+        self.controller.process(frame(Gesture.PINCH, pointer=(0.2, 0.3)))
+        self.controller.process(frame(Gesture.PINCH, pointer=(0.8, 0.9)))
+        assert self.mouse.calls == []
+
+    def test_drag_moves_relative_to_anchor(self):
+        self.controller.process(
+            frame(Gesture.PINCH, pointer=(0.5, 0.5)), PinchEvent.DRAG_START
+        )
+        assert self.controller.drag_active
+        self.controller.process(frame(Gesture.PINCH, pointer=(0.6, 0.5)))
+        assert self.mouse.calls[-1] == ("move", 600, 400)
+        self.controller.process(frame(Gesture.PINCH, pointer=(0.6, 0.7)))
+        assert self.mouse.calls[-1] == ("move", 600, 560)
+        self.controller.process(None, PinchEvent.DRAG_END)
+        assert self.mouse.calls[-1] == ("up",)
+        assert not self.controller.drag_active
+
+    def test_drag_does_not_jump_to_finger_tip(self):
+        self.controller.process(
+            frame(Gesture.POINT, pointer=(0.5, 0.5))
+        )
+        assert self.mouse.calls[-1] == ("move", 500, 400)
+        self.controller.process(
+            frame(Gesture.PINCH, pointer=(0.5, 0.5)), PinchEvent.DRAG_START
+        )
+        self.controller.process(frame(Gesture.PINCH, pointer=(0.4, 0.9)))
+        assert self.mouse.calls == [
+            ("move", 500, 400),
+            ("down",),
+            ("move", 400, 720),
+        ]
 
     def test_drag_lifecycle_has_exactly_one_down_and_up(self):
-        self.controller.process(frame(Gesture.PINCH), PinchEvent.DRAG_START)
-        self.controller.process(frame(Gesture.PINCH))
+        self.controller.process(None, PinchEvent.DRAG_START)
+        assert [call[0] for call in self.mouse.calls] == ["down"]
         self.controller.process(None, PinchEvent.DRAG_END)
-        assert [call[0] for call in self.mouse.calls] == ["down", "move", "move", "up"]
+        assert [call[0] for call in self.mouse.calls] == ["down", "up"]
         assert not self.controller.drag_active
 
     def test_forced_drag_end_releases_mouse(self):
-        self.controller.process(frame(Gesture.PINCH), PinchEvent.DRAG_START)
+        self.controller.process(None, PinchEvent.DRAG_START)
         self.controller.process(None, PinchEvent.DRAG_END_FORCED)
-        assert self.mouse.calls == [("down",), ("move", 500, 400), ("up",)]
+        assert self.mouse.calls == [("down",), ("up",)]
 
     def test_shutdown_is_idempotent_and_safe(self):
-        self.controller.process(frame(Gesture.PINCH), PinchEvent.DRAG_START)
+        self.controller.process(None, PinchEvent.DRAG_START)
         self.controller.shutdown()
         self.controller.shutdown()
         assert self.mouse.calls.count(("up",)) == 1
         assert not self.controller.drag_active
 
     def test_toggle_resets_smoothing_and_releases_drag(self):
-        self.controller.process(frame(Gesture.PINCH), PinchEvent.DRAG_START)
+        self.controller.process(None, PinchEvent.DRAG_START)
         assert self.controller.toggle_enabled() is False
         assert self.mouse.calls[-1] == ("up",)
         assert self.controller.toggle_enabled() is True

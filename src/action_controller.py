@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from math import hypot
-from pathlib import Path
 from typing import Callable, Protocol
 
 import pyautogui
@@ -50,16 +49,52 @@ class PyAutoGuiBackend:
 
 
 class PycawVolumeBackend:
-    def __init__(self) -> None:
-        from pycaw.pycaw import AudioUtilities
+    """pycaw volume with lazy endpoint acquisition.
 
-        self._endpoint = AudioUtilities.GetSpeakers().EndpointVolume
+    The endpoint is resolved on first use so that starting the app does not
+    fail (or touch system audio) on machines where no endpoint is available.
+    """
+
+    def __init__(self) -> None:
+        self._endpoint = None
+
+    def _ensure_endpoint(self):
+        if self._endpoint is None:
+            from pycaw.pycaw import AudioUtilities
+
+            self._endpoint = AudioUtilities.GetSpeakers().EndpointVolume
+        return self._endpoint
 
     def get_level(self) -> float:
-        return float(self._endpoint.GetMasterVolumeLevelScalar())
+        return float(self._ensure_endpoint().GetMasterVolumeLevelScalar())
 
     def set_level(self, level: float) -> None:
-        self._endpoint.SetMasterVolumeLevelScalar(max(0.0, min(1.0, level)), None)
+        self._ensure_endpoint().SetMasterVolumeLevelScalar(
+            max(0.0, min(1.0, level)), None
+        )
+
+
+def normalized_to_screen(
+    normalized: tuple[float, float],
+    width: int,
+    height: int,
+    sensitivity: float,
+    edge_margin: float,
+) -> tuple[float, float]:
+    """Map normalized camera coordinates to screen-space float coordinates.
+
+    The tracking area shrinks to the ``edge_margin`` band, then expands around
+    the centre by ``sensitivity`` (clamped at screen edges). A separate helper
+    keeps ordinary pointer control and the drag anchor math consistent.
+    """
+    x = max(0.0, min(1.0, float(normalized[0])))
+    y = max(0.0, min(1.0, float(normalized[1])))
+    if edge_margin > 0.0:
+        x = (x - edge_margin) / (1.0 - 2.0 * edge_margin)
+        y = (y - edge_margin) / (1.0 - 2.0 * edge_margin)
+    x = max(0.0, min(1.0, 0.5 + (x - 0.5) * sensitivity))
+    y = max(0.0, min(1.0, 0.5 + (y - 0.5) * sensitivity))
+    return x * (width - 1), y * (height - 1)
 
 
 class CursorSmoother:
@@ -70,9 +105,9 @@ class CursorSmoother:
     ) -> None:
         self._alpha = config.smoothing_alpha
         self._dead_zone = config.dead_zone
+        self._width, self._height = screen_size
         self._sensitivity = config.sensitivity
         self._edge_margin = config.edge_margin
-        self._width, self._height = screen_size
         self._position: tuple[float, float] | None = None
 
     @property
@@ -81,19 +116,24 @@ class CursorSmoother:
             return None
         return round(self._position[0]), round(self._position[1])
 
+    @property
+    def screen_size(self) -> tuple[int, int]:
+        return self._width, self._height
+
     def update(self, normalized: tuple[float, float]) -> tuple[int, int]:
-        x = max(0.0, min(1.0, float(normalized[0])))
-        y = max(0.0, min(1.0, float(normalized[1])))
-        margin = self._edge_margin
-        if margin > 0.0:
-            x = (x - margin) / (1.0 - 2.0 * margin)
-            y = (y - margin) / (1.0 - 2.0 * margin)
-        x = max(0.0, min(1.0, 0.5 + (x - 0.5) * self._sensitivity))
-        y = max(0.0, min(1.0, 0.5 + (y - 0.5) * self._sensitivity))
-        target = (x * (self._width - 1), y * (self._height - 1))
+        target = normalized_to_screen(
+            normalized,
+            self._width,
+            self._height,
+            self._sensitivity,
+            self._edge_margin,
+        )
         if self._position is None:
             self._position = target
-        elif hypot(target[0] - self._position[0], target[1] - self._position[1]) >= self._dead_zone:
+        elif (
+            hypot(target[0] - self._position[0], target[1] - self._position[1])
+            >= self._dead_zone
+        ):
             self._position = (
                 self._alpha * target[0] + (1.0 - self._alpha) * self._position[0],
                 self._alpha * target[1] + (1.0 - self._alpha) * self._position[1],
@@ -120,6 +160,10 @@ class ActionController:
         self._volume = volume_backend or PycawVolumeBackend()
         size = screen_size or self._mouse.screen_size()
         self._smoother = CursorSmoother(cursor, size)
+        self._width, self._height = size
+        self._alpha = cursor.smoothing_alpha
+        self._dead_zone = cursor.dead_zone
+        self._drag_gain = cursor.sensitivity
         self._mappings = mappings
         self._scroll = scroll
         self._volume_config = volume
@@ -128,6 +172,10 @@ class ActionController:
         self._last_volume_at = float("-inf")
         self._enabled = True
         self._drag_active = False
+        self._drag_anchor_screen: tuple[int, int] | None = None
+        self._drag_anchor_norm: tuple[float, float] | None = None
+        self._drag_smoothed: tuple[float, float] | None = None
+        self._drag_last_sent: tuple[int, int] | None = None
 
     @property
     def enabled(self) -> bool:
@@ -161,18 +209,71 @@ class ActionController:
         self._mouse.click()
         return True
 
-    def start_drag(self) -> bool:
+    def _begin_drag(self, frame: FrameGesture | None) -> bool:
         if not self._enabled or self._drag_active:
             return False
         self._mouse.mouse_down()
         self._drag_active = True
+        anchor_norm = frame.pointer if frame is not None else None
+        anchor_screen = self._smoother.position
+        if anchor_screen is None and anchor_norm is not None:
+            mapped = normalized_to_screen(
+                anchor_norm,
+                self._width,
+                self._height,
+                self._drag_gain,
+                0.0,
+            )
+            anchor_screen = (round(mapped[0]), round(mapped[1]))
+        self._drag_anchor_screen = anchor_screen
+        self._drag_anchor_norm = anchor_norm
+        self._drag_smoothed = None
+        self._drag_last_sent = anchor_screen
         return True
+
+    def _drag_move(self, pointer_norm: tuple[float, float] | None) -> tuple[int, int] | None:
+        if not self._enabled or not self._drag_active or pointer_norm is None:
+            return None
+        anchor_screen = self._drag_anchor_screen
+        anchor_norm = self._drag_anchor_norm
+        if anchor_screen is None or anchor_norm is None:
+            return None
+        target = (
+            anchor_screen[0]
+            + (pointer_norm[0] - anchor_norm[0]) * (self._width - 1) * self._drag_gain,
+            anchor_screen[1]
+            + (pointer_norm[1] - anchor_norm[1]) * (self._height - 1) * self._drag_gain,
+        )
+        if self._drag_smoothed is None:
+            self._drag_smoothed = (float(target[0]), float(target[1]))
+        else:
+            prev_x, prev_y = self._drag_smoothed
+            self._drag_smoothed = (
+                self._alpha * target[0] + (1.0 - self._alpha) * prev_x,
+                self._alpha * target[1] + (1.0 - self._alpha) * prev_y,
+            )
+        pos = (round(self._drag_smoothed[0]), round(self._drag_smoothed[1]))
+        last_sent = self._drag_last_sent
+        if last_sent is not None:
+            if pos == last_sent:
+                return last_sent
+            if self._dead_zone > 0 and (
+                hypot(pos[0] - last_sent[0], pos[1] - last_sent[1]) < self._dead_zone
+            ):
+                return last_sent
+        self._drag_last_sent = pos
+        self._mouse.move_to(*pos)
+        return pos
 
     def release_drag(self) -> bool:
         if not self._drag_active:
             return False
         self._mouse.mouse_up()
         self._drag_active = False
+        self._drag_anchor_screen = None
+        self._drag_anchor_norm = None
+        self._drag_smoothed = None
+        self._drag_last_sent = None
         return True
 
     def scroll(self, amount: int, now: float | None = None) -> bool:
@@ -205,15 +306,20 @@ class ActionController:
         if pinch_event is PinchEvent.CLICK:
             self.click()
         elif pinch_event is PinchEvent.DRAG_START:
-            self.start_drag()
+            self._begin_drag(frame)
         elif pinch_event in (PinchEvent.DRAG_END, PinchEvent.DRAG_END_FORCED):
             self.release_drag()
 
         if frame is None:
             return
+
+        # Cursor follows the index finger only in the POINT pose, or while an
+        # active drag moves relative to its anchor. While a pinch is held
+        # (before drag), the cursor stays put so clicking does not jitter.
         cursor_gesture = Gesture(self._mappings.cursor)
-        pinch_gesture = Gesture(self._mappings.pinch)
-        if frame.gesture in (cursor_gesture, pinch_gesture) or self._drag_active:
+        if self._drag_active:
+            self._drag_move(frame.pointer)
+        elif frame.gesture is cursor_gesture and not frame.pinch_active:
             self.move_pointer(frame.pointer)
 
         gesture = frame.gesture

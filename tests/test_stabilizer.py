@@ -4,6 +4,7 @@ import pytest
 
 from src.config import PinchConfig, StabilizerConfig
 from src.stabilizer import (
+    PinchDebounce,
     PinchEvent,
     PinchState,
     PinchStateMachine,
@@ -20,6 +21,41 @@ def frames_per_second(stabilizer, labels, step=0.05):
     for index, label in enumerate(labels):
         results.append(stabilizer.update(label, now=index * step))
     return results
+
+
+class TestPinchDebounce:
+    def setup_method(self):
+        self.debounce = PinchDebounce(frames=3)
+
+    def test_single_frame_transient_is_ignored(self):
+        assert self.debounce.update(True) is False
+        assert self.debounce.update(False) is False
+        assert self.debounce.state is False
+
+    def test_confirms_after_required_frames(self):
+        assert self.debounce.update(True) is False
+        assert self.debounce.update(True) is False
+        assert self.debounce.update(True) is True
+        assert self.debounce.update(True) is True
+
+    def test_release_also_requires_frames(self):
+        for _ in range(3):
+            self.debounce.update(True)
+        assert self.debounce.state is True
+        assert self.debounce.update(False) is True
+        assert self.debounce.update(False) is True
+        assert self.debounce.update(False) is False
+
+    def test_reset_clears_state(self):
+        for _ in range(3):
+            self.debounce.update(True)
+        self.debounce.reset()
+        assert self.debounce.state is False
+        assert self.debounce.update(True) is False
+
+    def test_invalid_frames_count_raises(self):
+        with pytest.raises(ValueError):
+            PinchDebounce(frames=0)
 
 
 class TestTemporalStabilizer:

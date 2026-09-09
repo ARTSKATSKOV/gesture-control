@@ -92,6 +92,42 @@ class TemporalStabilizer:
         return None
 
 
+class PinchDebounce:
+    """Confirm pinch on/off only after it persists for N consecutive frames.
+
+    The full ``TemporalStabilizer`` (majority-of-window + stable time) is too
+    slow for a click, but a raw per-frame pinch signal lets a single transient
+    frame produce a spurious click. This lightweight multi-frame gate sits
+    between the classifier and the pinch state machine: it keeps click latency
+    low while still requiring the signal to persist across several frames.
+    """
+
+    def __init__(self, frames: int = 3) -> None:
+        if frames < 1:
+            raise ValueError("frames must be >= 1")
+        self._frames = frames
+        self._count = 0
+        self._state = False
+
+    @property
+    def state(self) -> bool:
+        return self._state
+
+    def update(self, active: bool) -> bool:
+        if active == self._state:
+            self._count = 0
+        else:
+            self._count += 1
+            if self._count >= self._frames:
+                self._state = active
+                self._count = 0
+        return self._state
+
+    def reset(self) -> None:
+        self._state = False
+        self._count = 0
+
+
 class PinchStateMachine:
     def __init__(
         self,

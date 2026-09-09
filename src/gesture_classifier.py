@@ -18,13 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .config import PinchConfig
-from .hand_tracker import (
-    Hand,
-    Landmark,
-    LandmarkIndex as LI,
-    distance,
-    hand_size,
-)
+from .hand_tracker import Hand, LandmarkIndex as LI, distance, hand_size
 
 # Finger landmark groups for the four fingers: (mcp, pip, tip).
 FINGER_JOINTS = (
@@ -115,13 +109,15 @@ def _thumb_pose(landmarks) -> Gesture | None:
     return None
 
 
+def _extended_count(landmarks) -> int:
+    """How many of the four fingers (index..pinky) are extended."""
+    return sum(_is_extended(landmarks, *joints) for joints in FINGER_JOINTS)
+
+
 def _classify_posture(landmarks) -> Gesture:
+    count = _extended_count(landmarks)
     index_ext = _is_extended(landmarks, *FINGER_JOINTS[0])
     middle_ext = _is_extended(landmarks, *FINGER_JOINTS[1])
-    ring_ext = _is_extended(landmarks, *FINGER_JOINTS[2])
-    pinky_ext = _is_extended(landmarks, *FINGER_JOINTS[3])
-    extended = (index_ext, middle_ext, ring_ext, pinky_ext)
-    count = sum(extended)
 
     if count == 4:
         return Gesture.OPEN_PALM
@@ -183,7 +179,9 @@ class GestureClassifier:
             )
         landmarks = hand.landmarks
         ratio = pinch_ratio_of(landmarks)
-        pinch_active = self._pinch_detector.update(ratio)
+        detector_active = self._pinch_detector.update(ratio)
+        count = _extended_count(landmarks)
+        pinch_active = detector_active and count >= 1
         pointer = (
             landmarks[LI.INDEX_FINGER_TIP].x,
             landmarks[LI.INDEX_FINGER_TIP].y,

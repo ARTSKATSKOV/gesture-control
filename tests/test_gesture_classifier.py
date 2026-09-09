@@ -215,14 +215,28 @@ class TestClassifier:
         assert result.gesture == Gesture.THUMBS_DOWN
 
     def test_pinch_wins_over_posture(self):
-        landmarks = [land(WRIST_X + 0.02, WRIST_Y)] * 21
-        landmarks[LI.WRIST] = land(WRIST_X, WRIST_Y)
-        landmarks[LI.MIDDLE_FINGER_MCP] = land(WRIST_X + 0.01, WRIST_Y + 0.05)
-        landmarks[LI.THUMB_TIP] = land(WRIST_X, WRIST_Y)
-        landmarks[LI.INDEX_FINGER_TIP] = land(WRIST_X, WRIST_Y)
+        landmarks = list(_palm_up().landmarks)
+        landmarks[LI.THUMB_TIP] = landmarks[LI.INDEX_FINGER_TIP]
         hand = make_hand(*landmarks)
-        assert self.classify(hand).gesture == Gesture.PINCH
-        assert self.classify(hand).pinch_active is True
+        result = self.classify(hand)
+        assert result.gesture == Gesture.PINCH
+        assert result.pinch_active is True
+
+    def test_fist_with_touching_tips_is_not_pinch(self):
+        landmarks = [land(WRIST_X, WRIST_Y) for _ in range(21)]
+        landmarks[LI.MIDDLE_FINGER_MCP] = land(WRIST_X, WRIST_Y + 0.10)
+        for pip in (
+            LI.INDEX_FINGER_PIP,
+            LI.MIDDLE_FINGER_PIP,
+            LI.RING_FINGER_PIP,
+            LI.PINKY_PIP,
+        ):
+            landmarks[pip] = land(WRIST_X, WRIST_Y - 0.10)
+        landmarks[LI.THUMB_TIP] = land(WRIST_X + 0.05, WRIST_Y)
+        landmarks[LI.INDEX_FINGER_TIP] = land(WRIST_X + 0.05, WRIST_Y)
+        result = self.classify(make_hand(*landmarks))
+        assert result.gesture == Gesture.FIST
+        assert result.pinch_active is False
 
 
 class TestFingerEnumeration:

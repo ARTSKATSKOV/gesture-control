@@ -111,6 +111,7 @@ class PinchConfig:
     threshold: float = 0.35
     drag_hold_ms: int = 400
     click_cooldown_ms: int = 350
+    confirm_frames: int = 3
 
     def __post_init__(self) -> None:
         if not 0.0 < self.threshold < 1.0:
@@ -119,13 +120,15 @@ class PinchConfig:
             raise ConfigError("pinch.drag_hold_ms must be >= 0")
         if self.click_cooldown_ms < 0:
             raise ConfigError("pinch.click_cooldown_ms must be >= 0")
+        if self.confirm_frames < 1:
+            raise ConfigError("pinch.confirm_frames must be >= 1")
 
 
 @dataclass(frozen=True)
 class CursorConfig:
-    smoothing_alpha: float = 0.25
+    smoothing_alpha: float = 0.15
     dead_zone: float = 4.0
-    sensitivity: float = 1.8
+    sensitivity: float = 1.0
     edge_margin: float = 0.10
 
     def __post_init__(self) -> None:
@@ -172,12 +175,16 @@ class HandConfig:
     min_hand_detection_confidence: float = 0.5
     min_hand_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
+    track_width: int = 320
+    track_height: int = 240
 
     def __post_init__(self) -> None:
         if not self.model_path.strip():
             raise ConfigError("hand.model_path must be a non-empty string")
         if self.num_hands < 1:
             raise ConfigError("hand.num_hands must be >= 1")
+        if self.track_width <= 0 or self.track_height <= 0:
+            raise ConfigError("hand.track_width and track_height must be positive")
         for name in (
             "min_hand_detection_confidence",
             "min_hand_presence_confidence",
@@ -198,6 +205,9 @@ class GestureMappingsConfig:
     volume_down: str = "THUMBS_DOWN"
 
     def __post_init__(self) -> None:
+        from .gesture_classifier import Gesture
+
+        known = set(Gesture.__members__)
         for name in (
             "cursor",
             "pinch",
@@ -209,6 +219,10 @@ class GestureMappingsConfig:
             value = getattr(self, name)
             if not value.strip():
                 raise ConfigError(f"mappings.{name} must be a non-empty string")
+            if value not in known:
+                raise ConfigError(
+                    f"mappings.{name} must be a known gesture, got {value!r}"
+                )
 
 
 @dataclass(frozen=True)

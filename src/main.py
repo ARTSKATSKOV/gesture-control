@@ -11,14 +11,12 @@ import cv2
 
 from .action_controller import ActionController
 from .config import AppConfig
-from .gesture_classifier import Gesture, GestureClassifier
+from .gesture_classifier import GestureClassifier
 from .hand_tracker import HandTracker, new_hand_tracker
 from .overlay import OverlayState, draw_overlay
-from .stabilizer import PinchStateMachine, TemporalStabilizer
+from .stabilizer import PinchDebounce, PinchStateMachine, TemporalStabilizer
 
 WINDOW_NAME = "Gesture Control"
-KEY_TOGGLE = ord(" ")
-KEY_QUIT = 27
 
 
 def open_camera(config) -> cv2.VideoCapture:
@@ -78,6 +76,7 @@ def run(config: AppConfig | None = None) -> None:
     controller: ActionController | None = None
     stabilizer = TemporalStabilizer(config.stabilizer)
     pinch_state = PinchStateMachine(config.pinch)
+    pinch_debounce = PinchDebounce(config.pinch.confirm_frames)
     classifier = GestureClassifier(config.pinch)
     fps = FpsCounter()
     enabled = True
@@ -99,7 +98,12 @@ def run(config: AppConfig | None = None) -> None:
                 time.sleep(0.01)
                 continue
             frame = cv2.flip(frame, 1)
-            hand = tracker.process(frame)
+            track_frame = cv2.resize(
+                frame,
+                (config.hand.track_width, config.hand.track_height),
+                interpolation=cv2.INTER_AREA,
+            )
+            hand = tracker.process(track_frame)
             raw = classifier.classify(hand)
             stable_gesture = stabilizer.update(raw.gesture)
             stable_frame = (
@@ -107,8 +111,9 @@ def run(config: AppConfig | None = None) -> None:
                 if stable_gesture is not None and enabled
                 else None
             )
+            pinch_signal = pinch_debounce.update(raw.pinch_active) if enabled else False
             pinch_event = pinch_state.update(
-                pinch_active=raw.pinch_active if enabled else False,
+                pinch_active=pinch_signal,
                 hand_present=hand is not None if enabled else False,
             )
             controller.process(stable_frame, pinch_event)
@@ -132,6 +137,7 @@ def run(config: AppConfig | None = None) -> None:
             if _key_matches(key, config.hotkeys.toggle):
                 enabled = controller.toggle_enabled()
                 stabilizer.reset()
+                pinch_debounce.reset()
                 event = pinch_state.reset()
                 if event.value:
                     controller.process(None, event)

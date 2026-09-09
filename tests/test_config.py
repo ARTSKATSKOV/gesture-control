@@ -15,11 +15,14 @@ class TestDefaults:
         assert cfg.stabilizer.stable_ms == 120
         assert cfg.pinch.drag_hold_ms == 400
         assert cfg.pinch.click_cooldown_ms == 350
-        assert cfg.cursor.smoothing_alpha == pytest.approx(0.25)
+        assert cfg.pinch.confirm_frames == 3
+        assert cfg.cursor.smoothing_alpha == pytest.approx(0.15)
         assert cfg.cursor.dead_zone == pytest.approx(4.0)
-        assert cfg.cursor.sensitivity == pytest.approx(1.8)
+        assert cfg.cursor.sensitivity == pytest.approx(1.0)
         assert cfg.cursor.edge_margin == pytest.approx(0.1)
         assert cfg.camera.backend == "dshow"
+        assert cfg.hand.track_width == 320
+        assert cfg.hand.track_height == 240
         assert cfg.scroll.wheel_step == 100
         assert cfg.scroll.cooldown_ms == 120
 
@@ -75,6 +78,8 @@ class TestErrors:
             {"pinch": {"threshold": 1.0}},
             {"pinch": {"drag_hold_ms": -1}},
             {"pinch": {"drag_hold_ms": "400"}},
+            {"pinch": {"confirm_frames": 0}},
+            {"pinch": {"confirm_frames": "3"}},
             {"stabilizer": {"window_frames": 0}},
             {"stabilizer": {"required_frames": 0}},
             {"stabilizer": {"window_frames": 3, "required_frames": 5}},
@@ -91,12 +96,15 @@ class TestErrors:
             {"volume": {"step": 2.0}},
             {"mappings": {"cursor": ""}},
             {"mappings": {"scroll_up": 42}},
+            {"mappings": {"cursor": "BOGUS"}},
             {"camera": {"index": -1}},
             {"camera": {"width": 0}},
             {"camera": {"backend": "invalid"}},
             {"camera": {"index": True}},
             {"hand": {"num_hands": 0}},
             {"hand": {"num_hands": "2"}},
+            {"hand": {"track_width": 0}},
+            {"hand": {"track_height": -1}},
             {"hand": {"model_path": ""}},
             {"hand": {"model_path": 42}},
             {"hand": {"min_hand_detection_confidence": 1.5}},
