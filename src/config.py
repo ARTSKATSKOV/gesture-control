@@ -77,12 +77,15 @@ class CameraConfig:
     index: int = 0
     width: int = 640
     height: int = 480
+    backend: str = "dshow"
 
     def __post_init__(self) -> None:
         if self.index < 0:
             raise ConfigError("camera.index must be >= 0")
         if self.width <= 0 or self.height <= 0:
             raise ConfigError("camera.width and camera.height must be positive")
+        if self.backend.strip().lower() not in {"auto", "dshow", "msmf"}:
+            raise ConfigError("camera.backend must be one of: auto, dshow, msmf")
 
 
 @dataclass(frozen=True)
@@ -122,19 +125,25 @@ class PinchConfig:
 class CursorConfig:
     smoothing_alpha: float = 0.25
     dead_zone: float = 4.0
+    sensitivity: float = 1.8
+    edge_margin: float = 0.10
 
     def __post_init__(self) -> None:
         if not 0.0 < self.smoothing_alpha <= 1.0:
             raise ConfigError("cursor.smoothing_alpha must be in (0, 1]")
         if self.dead_zone < 0:
             raise ConfigError("cursor.dead_zone must be >= 0")
+        if self.sensitivity <= 0:
+            raise ConfigError("cursor.sensitivity must be > 0")
+        if not 0.0 <= self.edge_margin < 0.5:
+            raise ConfigError("cursor.edge_margin must be in [0, 0.5)")
 
 
 @dataclass(frozen=True)
 class ScrollConfig:
     enabled: bool = True
-    wheel_step: int = 1
-    cooldown_ms: int = 300
+    wheel_step: int = 100
+    cooldown_ms: int = 120
 
     def __post_init__(self) -> None:
         if self.wheel_step < 1:

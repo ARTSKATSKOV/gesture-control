@@ -21,6 +21,25 @@ KEY_TOGGLE = ord(" ")
 KEY_QUIT = 27
 
 
+def open_camera(config) -> cv2.VideoCapture:
+    backend_name = config.backend.strip().lower()
+    if backend_name == "dshow":
+        backends = (cv2.CAP_DSHOW,)
+    elif backend_name == "msmf":
+        backends = (cv2.CAP_MSMF,)
+    else:
+        backends = (cv2.CAP_DSHOW, cv2.CAP_MSMF)
+
+    for backend in backends:
+        camera = cv2.VideoCapture(config.index, backend)
+        if camera.isOpened():
+            return camera
+        camera.release()
+    raise RuntimeError(
+        f"cannot open camera index {config.index} with backend {backend_name}"
+    )
+
+
 def _key_matches(key: int, configured: str) -> bool:
     normalized = configured.strip().lower()
     if normalized in {"esc", "escape"}:
@@ -54,7 +73,7 @@ class FpsCounter:
 def run(config: AppConfig | None = None) -> None:
     config = config or AppConfig.load()
     project_root = Path(__file__).resolve().parent.parent
-    camera = cv2.VideoCapture(config.camera.index)
+    camera = open_camera(config.camera)
     tracker: HandTracker | None = None
     controller: ActionController | None = None
     stabilizer = TemporalStabilizer(config.stabilizer)
@@ -64,8 +83,6 @@ def run(config: AppConfig | None = None) -> None:
     enabled = True
 
     try:
-        if not camera.isOpened():
-            raise RuntimeError(f"cannot open camera index {config.camera.index}")
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.camera.width)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, config.camera.height)
         tracker = new_hand_tracker(config.hand, model_root=project_root)
@@ -78,8 +95,9 @@ def run(config: AppConfig | None = None) -> None:
 
         while True:
             ok, frame = camera.read()
-            if not ok:
-                raise RuntimeError("failed to read frame from camera")
+            if not ok or frame is None or frame.size == 0:
+                time.sleep(0.01)
+                continue
             frame = cv2.flip(frame, 1)
             hand = tracker.process(frame)
             raw = classifier.classify(hand)
@@ -89,9 +107,8 @@ def run(config: AppConfig | None = None) -> None:
                 if stable_gesture is not None and enabled
                 else None
             )
-            stable_pinch = stable_gesture is Gesture.PINCH
             pinch_event = pinch_state.update(
-                pinch_active=stable_pinch if enabled else False,
+                pinch_active=raw.pinch_active if enabled else False,
                 hand_present=hand is not None if enabled else False,
             )
             controller.process(stable_frame, pinch_event)

@@ -2,7 +2,8 @@
   "camera": {
     "index": 0,
     "width": 640,
-    "height": 480
+    "height": 480,
+    "backend": "dshow"
   },
   "hand": {
     "model_path": "models/hand_landmarker.task",
@@ -23,12 +24,14 @@
   },
   "cursor": {
     "smoothing_alpha": 0.25,
-    "dead_zone": 4.0
+    "dead_zone": 4.0,
+    "sensitivity": 1.8,
+    "edge_margin": 0.1
   },
   "scroll": {
     "enabled": true,
-    "wheel_step": 1,
-    "cooldown_ms": 300
+    "wheel_step": 100,
+    "cooldown_ms": 120
   },
   "volume": {
     "enabled": true,

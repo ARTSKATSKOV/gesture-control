@@ -70,6 +70,8 @@ class CursorSmoother:
     ) -> None:
         self._alpha = config.smoothing_alpha
         self._dead_zone = config.dead_zone
+        self._sensitivity = config.sensitivity
+        self._edge_margin = config.edge_margin
         self._width, self._height = screen_size
         self._position: tuple[float, float] | None = None
 
@@ -80,9 +82,15 @@ class CursorSmoother:
         return round(self._position[0]), round(self._position[1])
 
     def update(self, normalized: tuple[float, float]) -> tuple[int, int]:
-        x = max(0.0, min(1.0, float(normalized[0]))) * (self._width - 1)
-        y = max(0.0, min(1.0, float(normalized[1]))) * (self._height - 1)
-        target = (x, y)
+        x = max(0.0, min(1.0, float(normalized[0])))
+        y = max(0.0, min(1.0, float(normalized[1])))
+        margin = self._edge_margin
+        if margin > 0.0:
+            x = (x - margin) / (1.0 - 2.0 * margin)
+            y = (y - margin) / (1.0 - 2.0 * margin)
+        x = max(0.0, min(1.0, 0.5 + (x - 0.5) * self._sensitivity))
+        y = max(0.0, min(1.0, 0.5 + (y - 0.5) * self._sensitivity))
+        target = (x * (self._width - 1), y * (self._height - 1))
         if self._position is None:
             self._position = target
         elif hypot(target[0] - self._position[0], target[1] - self._position[1]) >= self._dead_zone:

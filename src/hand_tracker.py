@@ -16,6 +16,7 @@ and right hands are supported and the handedness label is preserved.
 """
 
 import enum
+import time
 from dataclasses import dataclass
 from math import dist
 from pathlib import Path
@@ -141,6 +142,7 @@ class HandTracker:
         min_hand_presence_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
         selfie_mode: bool = True,
+        clock=time.monotonic,
     ) -> None:
         try:
             from mediapipe.tasks.python import vision
@@ -157,7 +159,7 @@ class HandTracker:
 
         options = vision.HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_file)),
-            running_mode=vision.RunningMode.IMAGE,
+            running_mode=vision.RunningMode.VIDEO,
             num_hands=max(1, int(num_hands)),
             min_hand_detection_confidence=float(min_hand_detection_confidence),
             min_hand_presence_confidence=float(min_hand_presence_confidence),
@@ -165,6 +167,8 @@ class HandTracker:
         )
         self._landmarker = vision.HandLandmarker.create_from_options(options)
         self._selfie_mode = bool(selfie_mode)
+        self._clock = clock
+        self._last_timestamp_ms = -1
 
     def process(self, frame_bgr: np.ndarray) -> Optional[Hand]:
         """Track the active hand in one BGR frame (mirrored if selfie mode)."""
@@ -176,7 +180,9 @@ class HandTracker:
             image_format=mp.ImageFormat.SRGB,
             data=np.ascontiguousarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)),
         )
-        result = self._landmarker.detect(image)
+        timestamp_ms = max(self._last_timestamp_ms + 1, round(self._clock() * 1000))
+        self._last_timestamp_ms = timestamp_ms
+        result = self._landmarker.detect_for_video(image, timestamp_ms)
         hands = [
             Hand.from_mediapipe(
                 landmarks,

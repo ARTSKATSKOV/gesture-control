@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from src.main import FpsCounter, _key_matches
+from src.config import CameraConfig
+from src.main import FpsCounter, _key_matches, open_camera
 from src.overlay import OverlayState, draw_overlay
 
 

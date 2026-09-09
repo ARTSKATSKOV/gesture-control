@@ -17,6 +17,11 @@ class TestDefaults:
         assert cfg.pinch.click_cooldown_ms == 350
         assert cfg.cursor.smoothing_alpha == pytest.approx(0.25)
         assert cfg.cursor.dead_zone == pytest.approx(4.0)
+        assert cfg.cursor.sensitivity == pytest.approx(1.8)
+        assert cfg.cursor.edge_margin == pytest.approx(0.1)
+        assert cfg.camera.backend == "dshow"
+        assert cfg.scroll.wheel_step == 100
+        assert cfg.scroll.cooldown_ms == 120
 
     def test_pinch_threshold_is_normalized_ratio(self):
         cfg = AppConfig.defaults()
@@ -78,6 +83,8 @@ class TestErrors:
             {"cursor": {"smoothing_alpha": 0.0}},
             {"cursor": {"smoothing_alpha": 1.5}},
             {"cursor": {"dead_zone": -1}},
+            {"cursor": {"sensitivity": 0}},
+            {"cursor": {"edge_margin": 0.5}},
             {"scroll": {"wheel_step": 0}},
             {"scroll": {"cooldown_ms": -1}},
             {"volume": {"step": 0.0}},
@@ -86,6 +93,7 @@ class TestErrors:
             {"mappings": {"scroll_up": 42}},
             {"camera": {"index": -1}},
             {"camera": {"width": 0}},
+            {"camera": {"backend": "invalid"}},
             {"camera": {"index": True}},
             {"hand": {"num_hands": 0}},
             {"hand": {"num_hands": "2"}},
