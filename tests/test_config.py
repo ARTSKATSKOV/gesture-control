@@ -39,6 +39,7 @@ class TestConfigFile:
             "cursor",
             "scroll",
             "volume",
+            "mappings",
             "hotkeys",
         }
 
@@ -81,6 +82,8 @@ class TestErrors:
             {"scroll": {"cooldown_ms": -1}},
             {"volume": {"step": 0.0}},
             {"volume": {"step": 2.0}},
+            {"mappings": {"cursor": ""}},
+            {"mappings": {"scroll_up": 42}},
             {"camera": {"index": -1}},
             {"camera": {"width": 0}},
             {"camera": {"index": True}},

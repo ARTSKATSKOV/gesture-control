@@ -180,6 +180,29 @@ class HandConfig:
 
 
 @dataclass(frozen=True)
+class GestureMappingsConfig:
+    cursor: str = "POINT"
+    pinch: str = "PINCH"
+    scroll_up: str = "TWO_UP"
+    scroll_down: str = "TWO_DOWN"
+    volume_up: str = "THUMBS_UP"
+    volume_down: str = "THUMBS_DOWN"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "cursor",
+            "pinch",
+            "scroll_up",
+            "scroll_down",
+            "volume_up",
+            "volume_down",
+        ):
+            value = getattr(self, name)
+            if not value.strip():
+                raise ConfigError(f"mappings.{name} must be a non-empty string")
+
+
+@dataclass(frozen=True)
 class HotkeysConfig:
     toggle: str = "space"
     quit: str = "esc"
@@ -200,6 +223,7 @@ class AppConfig:
     cursor: CursorConfig
     scroll: ScrollConfig
     volume: VolumeConfig
+    mappings: GestureMappingsConfig
     hotkeys: HotkeysConfig
 
     @classmethod
@@ -212,6 +236,7 @@ class AppConfig:
             cursor=CursorConfig(),
             scroll=ScrollConfig(),
             volume=VolumeConfig(),
+            mappings=GestureMappingsConfig(),
             hotkeys=HotkeysConfig(),
         )
 

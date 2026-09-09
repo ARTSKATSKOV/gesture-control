@@ -35,6 +35,14 @@
     "step": 0.04,
     "cooldown_ms": 300
   },
+  "mappings": {
+    "cursor": "POINT",
+    "pinch": "PINCH",
+    "scroll_up": "TWO_UP",
+    "scroll_down": "TWO_DOWN",
+    "volume_up": "THUMBS_UP",
+    "volume_down": "THUMBS_DOWN"
+  },
   "hotkeys": {
     "toggle": "space",
     "quit": "esc"
