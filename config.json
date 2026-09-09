@@ -7,12 +7,12 @@
   },
   "hand": {
     "model_path": "models/hand_landmarker.task",
-    "num_hands": 2,
+    "num_hands": 1,
     "min_hand_detection_confidence": 0.5,
     "min_hand_presence_confidence": 0.5,
     "min_tracking_confidence": 0.5,
-    "track_width": 320,
-    "track_height": 240
+    "track_width": 256,
+    "track_height": 192
   },
   "stabilizer": {
     "window_frames": 7,
@@ -26,14 +26,18 @@
     "confirm_frames": 3
   },
   "cursor": {
-    "smoothing_alpha": 0.15,
-    "dead_zone": 4.0,
-    "sensitivity": 1.0,
-    "edge_margin": 0.1
+    "smoothing_alpha": 0.3,
+    "dead_zone": 3.0,
+    "sensitivity": 1.4,
+    "vertical_sensitivity": 1.8,
+    "edge_margin": 0.1,
+    "vertical_bottom": 0.6,
+    "pinch_guard_ratio": 0.6,
+    "pinch_release_ms": 180
   },
   "scroll": {
     "enabled": true,
-    "wheel_step": 100,
+    "wheel_step": 3,
     "cooldown_ms": 120
   },
   "volume": {

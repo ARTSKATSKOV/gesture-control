@@ -61,6 +61,7 @@ class FrameGesture:
     pinch_ratio: float
     pointer: tuple[float, float] | None
     handedness: str = ""
+    drag_pointer: tuple[float, float] | None = None
 
 
 def pinch_ratio_of(landmarks) -> float:
@@ -179,9 +180,13 @@ class GestureClassifier:
             )
         landmarks = hand.landmarks
         ratio = pinch_ratio_of(landmarks)
+        was_pinching = self._pinch_detector.active
         detector_active = self._pinch_detector.update(ratio)
         count = _extended_count(landmarks)
-        pinch_active = detector_active and count >= 1
+        # Folding the index during an established pinch must not release it.
+        pinch_active = detector_active and (count >= 1 or was_pinching)
+        if not pinch_active:
+            self._pinch_detector.reset()
         pointer = (
             landmarks[LI.INDEX_FINGER_TIP].x,
             landmarks[LI.INDEX_FINGER_TIP].y,
@@ -196,4 +201,5 @@ class GestureClassifier:
             pinch_ratio=ratio,
             pointer=pointer,
             handedness=hand.handedness,
+            drag_pointer=(landmarks[LI.INDEX_FINGER_MCP].x, landmarks[LI.INDEX_FINGER_MCP].y),
         )

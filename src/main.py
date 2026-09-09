@@ -11,12 +11,24 @@ import cv2
 
 from .action_controller import ActionController
 from .config import AppConfig
-from .gesture_classifier import GestureClassifier
+from .gesture_classifier import FrameGesture, Gesture, GestureClassifier
 from .hand_tracker import HandTracker, new_hand_tracker
 from .overlay import OverlayState, draw_overlay
 from .stabilizer import PinchDebounce, PinchStateMachine, TemporalStabilizer
 
 WINDOW_NAME = "Gesture Control"
+
+
+def control_frame(raw: FrameGesture, stable: Gesture | None, cursor_gesture: str) -> FrameGesture:
+    """Keep fresh positions, but never put an old action on a new pose.
+
+    Cursor movement can follow a current POINT immediately. Discrete actions
+    still require temporal confirmation AND agreement with this frame.
+    Pinch geometry always reaches the controller, even during transitions.
+    """
+    if raw.gesture is Gesture(cursor_gesture) or raw.gesture is stable:
+        return raw
+    return replace(raw, gesture=Gesture.UNKNOWN)
 
 
 def open_camera(config) -> cv2.VideoCapture:
@@ -80,6 +92,7 @@ def run(config: AppConfig | None = None) -> None:
     classifier = GestureClassifier(config.pinch)
     fps = FpsCounter()
     enabled = True
+    failed_reads = 0
 
     try:
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.camera.width)
@@ -95,8 +108,18 @@ def run(config: AppConfig | None = None) -> None:
         while True:
             ok, frame = camera.read()
             if not ok or frame is None or frame.size == 0:
+                controller.process(None, pinch_state.reset())
+                pinch_debounce.reset()
+                stabilizer.reset()
+                classifier.classify(None)
+                failed_reads += 1
+                if _key_matches(cv2.waitKey(1) & 0xFF, config.hotkeys.quit):
+                    break
+                if failed_reads >= 30:
+                    raise RuntimeError("Camera stopped delivering frames; reconnect it and restart.")
                 time.sleep(0.01)
                 continue
+            failed_reads = 0
             frame = cv2.flip(frame, 1)
             track_frame = cv2.resize(
                 frame,
@@ -105,10 +128,13 @@ def run(config: AppConfig | None = None) -> None:
             )
             hand = tracker.process(track_frame)
             raw = classifier.classify(hand)
+            if hand is None or not enabled:
+                pinch_debounce.reset()
+                stabilizer.reset()
             stable_gesture = stabilizer.update(raw.gesture)
             stable_frame = (
-                replace(raw, gesture=stable_gesture)
-                if stable_gesture is not None and enabled
+                control_frame(raw, stable_gesture, config.mappings.cursor)
+                if enabled and hand is not None
                 else None
             )
             pinch_signal = pinch_debounce.update(raw.pinch_active) if enabled else False
@@ -118,7 +144,7 @@ def run(config: AppConfig | None = None) -> None:
             )
             controller.process(stable_frame, pinch_event)
 
-            current_gesture = stable_gesture.value if stable_gesture is not None else raw.gesture.value
+            current_gesture = raw.gesture.value
             draw_overlay(
                 frame,
                 OverlayState(
@@ -127,8 +153,13 @@ def run(config: AppConfig | None = None) -> None:
                     enabled=enabled,
                     handedness=raw.handedness,
                     pinch_ratio=raw.pinch_ratio if hand is not None else None,
+                    interaction=("DRAG: move hand" if controller.drag_active else
+                                 "PINCH: cursor locked" if enabled and hand is not None and (
+                                     raw.pinch_active or raw.pinch_ratio <= config.cursor.pinch_guard_ratio
+                                 ) else ""),
                 ),
                 hand,
+                cursor=config.cursor,
             )
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
@@ -141,17 +172,17 @@ def run(config: AppConfig | None = None) -> None:
                 event = pinch_state.reset()
                 if event.value:
                     controller.process(None, event)
-    except Exception:
-        if controller is not None:
-            controller.shutdown()
-        raise
     finally:
-        if controller is not None:
-            controller.shutdown()
-        if tracker is not None:
-            tracker.close()
-        camera.release()
-        cv2.destroyAllWindows()
+        try:
+            if controller is not None:
+                controller.shutdown()
+        finally:
+            try:
+                if tracker is not None:
+                    tracker.close()
+            finally:
+                camera.release()
+                cv2.destroyAllWindows()
 
 
 def main() -> None:

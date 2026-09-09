@@ -7,6 +7,7 @@ failing later in the gesture pipeline.
 """
 
 import json
+from math import isfinite
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Mapping, TypeVar
@@ -33,6 +34,8 @@ def _coerce(field_type: type, value: Any, name: str) -> Any:
         raise ConfigError(f"'{name}' must be an integer, got {type(value).__name__}")
     if field_type is float:
         if isinstance(value, (int, float)):
+            if not isfinite(value):
+                raise ConfigError(f"'{name}' must be finite")
             return float(value)
         raise ConfigError(f"'{name}' must be a number, got {type(value).__name__}")
     if field_type is str:
@@ -126,10 +129,14 @@ class PinchConfig:
 
 @dataclass(frozen=True)
 class CursorConfig:
-    smoothing_alpha: float = 0.15
-    dead_zone: float = 4.0
-    sensitivity: float = 1.0
+    smoothing_alpha: float = 0.30
+    dead_zone: float = 3.0
+    sensitivity: float = 1.4
+    vertical_sensitivity: float = 1.8
     edge_margin: float = 0.10
+    vertical_bottom: float = 0.60
+    pinch_guard_ratio: float = 0.60
+    pinch_release_ms: int = 180
 
     def __post_init__(self) -> None:
         if not 0.0 < self.smoothing_alpha <= 1.0:
@@ -138,14 +145,22 @@ class CursorConfig:
             raise ConfigError("cursor.dead_zone must be >= 0")
         if self.sensitivity <= 0:
             raise ConfigError("cursor.sensitivity must be > 0")
+        if self.vertical_sensitivity <= 0:
+            raise ConfigError("cursor.vertical_sensitivity must be > 0")
         if not 0.0 <= self.edge_margin < 0.5:
             raise ConfigError("cursor.edge_margin must be in [0, 0.5)")
+        if not 0.5 < self.vertical_bottom <= 1.0:
+            raise ConfigError("cursor.vertical_bottom must be in (0.5, 1]")
+        if not 0 < self.pinch_guard_ratio < 1:
+            raise ConfigError("cursor.pinch_guard_ratio must be in (0, 1)")
+        if self.pinch_release_ms < 0:
+            raise ConfigError("cursor.pinch_release_ms must be >= 0")
 
 
 @dataclass(frozen=True)
 class ScrollConfig:
     enabled: bool = True
-    wheel_step: int = 100
+    wheel_step: int = 3
     cooldown_ms: int = 120
 
     def __post_init__(self) -> None:
@@ -171,12 +186,12 @@ class VolumeConfig:
 @dataclass(frozen=True)
 class HandConfig:
     model_path: str = "models/hand_landmarker.task"
-    num_hands: int = 2
+    num_hands: int = 1
     min_hand_detection_confidence: float = 0.5
     min_hand_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
-    track_width: int = 320
-    track_height: int = 240
+    track_width: int = 256
+    track_height: int = 192
 
     def __post_init__(self) -> None:
         if not self.model_path.strip():

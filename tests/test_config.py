@@ -16,14 +16,16 @@ class TestDefaults:
         assert cfg.pinch.drag_hold_ms == 400
         assert cfg.pinch.click_cooldown_ms == 350
         assert cfg.pinch.confirm_frames == 3
-        assert cfg.cursor.smoothing_alpha == pytest.approx(0.15)
-        assert cfg.cursor.dead_zone == pytest.approx(4.0)
-        assert cfg.cursor.sensitivity == pytest.approx(1.0)
+        assert cfg.cursor.smoothing_alpha == pytest.approx(0.3)
+        assert cfg.cursor.dead_zone == pytest.approx(3.0)
+        assert cfg.cursor.sensitivity == pytest.approx(1.4)
+        assert cfg.cursor.vertical_sensitivity == pytest.approx(1.8)
         assert cfg.cursor.edge_margin == pytest.approx(0.1)
         assert cfg.camera.backend == "dshow"
-        assert cfg.hand.track_width == 320
-        assert cfg.hand.track_height == 240
-        assert cfg.scroll.wheel_step == 100
+        assert cfg.hand.num_hands == 1
+        assert cfg.hand.track_width == 256
+        assert cfg.hand.track_height == 192
+        assert cfg.scroll.wheel_step == 3
         assert cfg.scroll.cooldown_ms == 120
 
     def test_pinch_threshold_is_normalized_ratio(self):
@@ -89,6 +91,7 @@ class TestErrors:
             {"cursor": {"smoothing_alpha": 1.5}},
             {"cursor": {"dead_zone": -1}},
             {"cursor": {"sensitivity": 0}},
+            {"cursor": {"vertical_sensitivity": 0}},
             {"cursor": {"edge_margin": 0.5}},
             {"scroll": {"wheel_step": 0}},
             {"scroll": {"cooldown_ms": -1}},
