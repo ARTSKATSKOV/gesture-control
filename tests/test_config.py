@@ -33,6 +33,7 @@ class TestConfigFile:
         data = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
         assert set(data) == {
             "camera",
+            "hand",
             "stabilizer",
             "pinch",
             "cursor",
@@ -83,6 +84,13 @@ class TestErrors:
             {"camera": {"index": -1}},
             {"camera": {"width": 0}},
             {"camera": {"index": True}},
+            {"hand": {"num_hands": 0}},
+            {"hand": {"num_hands": "2"}},
+            {"hand": {"model_path": ""}},
+            {"hand": {"model_path": 42}},
+            {"hand": {"min_hand_detection_confidence": 1.5}},
+            {"hand": {"min_hand_presence_confidence": -0.1}},
+            {"hand": {"min_tracking_confidence": "0.5"}},
             {"hotkeys": {"quit": ""}},
             {"hotkeys": {"toggle": True}},
             {"pinch": None},

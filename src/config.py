@@ -157,6 +157,29 @@ class VolumeConfig:
 
 
 @dataclass(frozen=True)
+class HandConfig:
+    model_path: str = "models/hand_landmarker.task"
+    num_hands: int = 2
+    min_hand_detection_confidence: float = 0.5
+    min_hand_presence_confidence: float = 0.5
+    min_tracking_confidence: float = 0.5
+
+    def __post_init__(self) -> None:
+        if not self.model_path.strip():
+            raise ConfigError("hand.model_path must be a non-empty string")
+        if self.num_hands < 1:
+            raise ConfigError("hand.num_hands must be >= 1")
+        for name in (
+            "min_hand_detection_confidence",
+            "min_hand_presence_confidence",
+            "min_tracking_confidence",
+        ):
+            value = getattr(self, name)
+            if not 0.0 <= value <= 1.0:
+                raise ConfigError(f"hand.{name} must be in [0, 1]")
+
+
+@dataclass(frozen=True)
 class HotkeysConfig:
     toggle: str = "space"
     quit: str = "esc"
@@ -171,6 +194,7 @@ class HotkeysConfig:
 @dataclass(frozen=True)
 class AppConfig:
     camera: CameraConfig
+    hand: HandConfig
     stabilizer: StabilizerConfig
     pinch: PinchConfig
     cursor: CursorConfig
@@ -182,6 +206,7 @@ class AppConfig:
     def defaults(cls) -> "AppConfig":
         return cls(
             camera=CameraConfig(),
+            hand=HandConfig(),
             stabilizer=StabilizerConfig(),
             pinch=PinchConfig(),
             cursor=CursorConfig(),
