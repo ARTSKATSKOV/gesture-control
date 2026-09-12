@@ -15,17 +15,19 @@ class TestDefaults:
         assert cfg.stabilizer.stable_ms == 120
         assert cfg.pinch.drag_hold_ms == 400
         assert cfg.pinch.click_cooldown_ms == 350
-        assert cfg.pinch.confirm_frames == 3
-        assert cfg.cursor.smoothing_alpha == pytest.approx(0.3)
-        assert cfg.cursor.dead_zone == pytest.approx(3.0)
-        assert cfg.cursor.sensitivity == pytest.approx(1.4)
-        assert cfg.cursor.vertical_sensitivity == pytest.approx(1.8)
-        assert cfg.cursor.edge_margin == pytest.approx(0.1)
+        assert cfg.pinch.threshold == pytest.approx(0.4)
+        assert cfg.pinch.confirm_frames == 2
+        assert cfg.cursor.smoothing_alpha == pytest.approx(0.12)
+        assert cfg.cursor.dead_zone == pytest.approx(5.0)
+        assert cfg.cursor.overscan == pytest.approx(1.5)
+        assert cfg.cursor.drag_sensitivity == pytest.approx(1.4)
+        assert cfg.cursor.pinch_guard_ratio == pytest.approx(0.65)
+        assert cfg.cursor.pinch_release_ms == 180
         assert cfg.camera.backend == "dshow"
         assert cfg.hand.num_hands == 1
         assert cfg.hand.track_width == 256
         assert cfg.hand.track_height == 192
-        assert cfg.scroll.wheel_step == 3
+        assert cfg.scroll.wheel_step == 300
         assert cfg.scroll.cooldown_ms == 120
 
     def test_pinch_threshold_is_normalized_ratio(self):
@@ -58,7 +60,7 @@ class TestMerging:
     def test_partial_config_merges_over_defaults(self):
         cfg = AppConfig.from_dict({"pinch": {"drag_hold_ms": 1000}})
         assert cfg.pinch.drag_hold_ms == 1000
-        assert cfg.pinch.threshold == pytest.approx(0.35)
+        assert cfg.pinch.threshold == pytest.approx(0.4)
         assert cfg.stabilizer.window_frames == 7
 
     def test_empty_config_yields_defaults(self):
@@ -90,9 +92,9 @@ class TestErrors:
             {"cursor": {"smoothing_alpha": 0.0}},
             {"cursor": {"smoothing_alpha": 1.5}},
             {"cursor": {"dead_zone": -1}},
-            {"cursor": {"sensitivity": 0}},
-            {"cursor": {"vertical_sensitivity": 0}},
-            {"cursor": {"edge_margin": 0.5}},
+            {"cursor": {"overscan": 0.99}},
+            {"cursor": {"overscan": 3.01}},
+            {"cursor": {"drag_sensitivity": 0}},
             {"scroll": {"wheel_step": 0}},
             {"scroll": {"cooldown_ms": -1}},
             {"volume": {"step": 0.0}},

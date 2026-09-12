@@ -30,8 +30,8 @@ FINGER_JOINTS = (
 
 # Hysteresis band around the configured pinch threshold. The hand must come
 # well below the threshold to start a pinch and go well above it to release.
-PINCH_ON_FACTOR = 0.8
-PINCH_OFF_FACTOR = 1.2
+PINCH_ON_FACTOR = 1.0
+PINCH_OFF_FACTOR = 1.25
 
 # Minimum |dy| / |dx| ratio of the index finger vector before a two-finger
 # pose is considered to be pointing clearly up or down (scroll direction).
@@ -66,7 +66,13 @@ class FrameGesture:
 
 def pinch_ratio_of(landmarks) -> float:
     """Distance between thumb and index tips normalized by palm size."""
-    palm = hand_size(landmarks)
+    wrist = landmarks[LI.WRIST]
+    palm = max(
+        hand_size(landmarks),
+        distance(wrist, landmarks[LI.INDEX_FINGER_MCP]),
+        distance(wrist, landmarks[LI.PINKY_MCP]),
+        distance(landmarks[LI.INDEX_FINGER_MCP], landmarks[LI.PINKY_MCP]),
+    )
     if palm <= 0:
         return float("inf")
     gap = distance(landmarks[LI.THUMB_TIP], landmarks[LI.INDEX_FINGER_TIP])
@@ -182,15 +188,18 @@ class GestureClassifier:
         ratio = pinch_ratio_of(landmarks)
         was_pinching = self._pinch_detector.active
         detector_active = self._pinch_detector.update(ratio)
-        count = _extended_count(landmarks)
-        # Folding the index during an established pinch must not release it.
-        pinch_active = detector_active and (count >= 1 or was_pinching)
+        palm = hand_size(landmarks)
+        index_reachable = palm > 0 and (
+            distance(landmarks[LI.WRIST], landmarks[LI.INDEX_FINGER_TIP]) / palm
+            >= 0.65
+        )
+        # An established pinch stays active while the index curls. A new pinch
+        # only needs the fingertip outside the folded-fist area.
+        pinch_active = detector_active and (was_pinching or index_reachable)
         if not pinch_active:
             self._pinch_detector.reset()
-        pointer = (
-            landmarks[LI.INDEX_FINGER_TIP].x,
-            landmarks[LI.INDEX_FINGER_TIP].y,
-        )
+        index_tip = landmarks[LI.INDEX_FINGER_TIP]
+        pointer = (index_tip.x, index_tip.y)
         if pinch_active:
             gesture = Gesture.PINCH
         else:

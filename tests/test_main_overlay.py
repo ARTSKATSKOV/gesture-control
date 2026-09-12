@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.config import CameraConfig
+from src.config import CameraConfig, CursorConfig
 from src.main import FpsCounter, _key_matches, open_camera
 from src.overlay import OverlayState, draw_overlay
 
@@ -67,3 +67,13 @@ class TestOverlay:
         frame = np.zeros((120, 160, 3), dtype=np.uint8)
         draw_overlay(frame, OverlayState(gesture="NO_HAND", enabled=False))
         assert np.any(frame != 0)
+
+    def test_cursor_and_hand_areas_use_green_and_red_rectangles(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        draw_overlay(
+            frame,
+            OverlayState(gesture="POINT", enabled=True),
+            cursor=CursorConfig(),
+        )
+        assert np.any(np.all(frame == (0, 0, 255), axis=2))
+        assert np.any(np.all(frame == (0, 255, 0), axis=2))

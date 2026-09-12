@@ -111,10 +111,10 @@ class StabilizerConfig:
 
 @dataclass(frozen=True)
 class PinchConfig:
-    threshold: float = 0.35
+    threshold: float = 0.40
     drag_hold_ms: int = 400
     click_cooldown_ms: int = 350
-    confirm_frames: int = 3
+    confirm_frames: int = 2
 
     def __post_init__(self) -> None:
         if not 0.0 < self.threshold < 1.0:
@@ -129,13 +129,11 @@ class PinchConfig:
 
 @dataclass(frozen=True)
 class CursorConfig:
-    smoothing_alpha: float = 0.30
-    dead_zone: float = 3.0
-    sensitivity: float = 1.4
-    vertical_sensitivity: float = 1.8
-    edge_margin: float = 0.10
-    vertical_bottom: float = 0.60
-    pinch_guard_ratio: float = 0.60
+    smoothing_alpha: float = 0.12
+    dead_zone: float = 5.0
+    overscan: float = 1.5
+    drag_sensitivity: float = 1.4
+    pinch_guard_ratio: float = 0.65
     pinch_release_ms: int = 180
 
     def __post_init__(self) -> None:
@@ -143,14 +141,10 @@ class CursorConfig:
             raise ConfigError("cursor.smoothing_alpha must be in (0, 1]")
         if self.dead_zone < 0:
             raise ConfigError("cursor.dead_zone must be >= 0")
-        if self.sensitivity <= 0:
-            raise ConfigError("cursor.sensitivity must be > 0")
-        if self.vertical_sensitivity <= 0:
-            raise ConfigError("cursor.vertical_sensitivity must be > 0")
-        if not 0.0 <= self.edge_margin < 0.5:
-            raise ConfigError("cursor.edge_margin must be in [0, 0.5)")
-        if not 0.5 < self.vertical_bottom <= 1.0:
-            raise ConfigError("cursor.vertical_bottom must be in (0.5, 1]")
+        if not 1.0 <= self.overscan <= 3.0:
+            raise ConfigError("cursor.overscan must be in [1, 3]")
+        if self.drag_sensitivity <= 0:
+            raise ConfigError("cursor.drag_sensitivity must be > 0")
         if not 0 < self.pinch_guard_ratio < 1:
             raise ConfigError("cursor.pinch_guard_ratio must be in (0, 1)")
         if self.pinch_release_ms < 0:
@@ -160,7 +154,7 @@ class CursorConfig:
 @dataclass(frozen=True)
 class ScrollConfig:
     enabled: bool = True
-    wheel_step: int = 3
+    wheel_step: int = 300
     cooldown_ms: int = 120
 
     def __post_init__(self) -> None:

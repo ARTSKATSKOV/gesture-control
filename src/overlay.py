@@ -26,15 +26,18 @@ def draw_overlay(frame: np.ndarray, state: OverlayState, hand: Hand | None = Non
         draw_hand(frame, hand)
     if cursor is not None:
         height, width = frame.shape[:2]
-        half_x = (0.5 - cursor.edge_margin) / cursor.sensitivity
-        half_y = (0.5 - cursor.edge_margin) / cursor.vertical_sensitivity
-        left = round(max(0, 0.5 - half_x) * (width - 1))
-        right = round(min(1, 0.5 + half_x) * (width - 1))
-        top = round(max(0, 0.5 - half_y) * (height - 1))
-        bottom = round(min(cursor.vertical_bottom, 0.5 + half_y) * (height - 1))
-        cv2.rectangle(frame, (left, top), (right, bottom), (255, 220, 0), 1)
+        # The full (red) frame is MediaPipe's hand-detection area.  Only the
+        # smaller (green) rectangle maps fingertip motion to the whole screen,
+        # leaving room for the rest of the hand outside the cursor area.
+        cv2.rectangle(frame, (1, 1), (width - 2, height - 2), (0, 0, 255), 2)
+        half = 0.5 / cursor.overscan
+        left = round((0.5 - half) * (width - 1))
+        right = round((0.5 + half) * (width - 1))
+        top = round((0.5 - half) * (height - 1))
+        bottom = round((0.5 + half) * (height - 1))
+        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
         cv2.drawMarker(frame, (round((width - 1) / 2), round((height - 1) / 2)),
-                       (255, 220, 0), cv2.MARKER_CROSS, 12, 1)
+                       (0, 255, 0), cv2.MARKER_CROSS, 12, 1)
 
     status = "Enabled" if state.enabled else "Disabled"
     status_color = (0, 200, 0) if state.enabled else (0, 0, 255)
@@ -43,6 +46,8 @@ def draw_overlay(frame: np.ndarray, state: OverlayState, hand: Hand | None = Non
         (f"Tracking FPS: {state.fps:.1f}", (255, 255, 255)),
         (f"Status: {status}", status_color),
     ]
+    if cursor is not None:
+        lines.append(("Green: cursor | Red: hand", (255, 255, 255)))
     if state.handedness:
         lines.append((f"Hand: {state.handedness}", (255, 255, 255)))
     if state.pinch_ratio is not None:

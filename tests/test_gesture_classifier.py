@@ -91,29 +91,38 @@ class TestPinchRatio:
         collapsed = make_hand(*[land(WRIST_X, WRIST_Y) for _ in range(21)])
         assert pinch_ratio_of(collapsed.landmarks) == float("inf")
 
+    def test_palm_width_keeps_ratio_stable_when_palm_length_is_foreshortened(self):
+        landmarks = [land(WRIST_X, WRIST_Y) for _ in range(21)]
+        landmarks[LI.INDEX_FINGER_MCP] = land(WRIST_X - 0.1, WRIST_Y)
+        landmarks[LI.PINKY_MCP] = land(WRIST_X + 0.1, WRIST_Y)
+        landmarks[LI.THUMB_TIP] = land(WRIST_X, WRIST_Y - 0.1)
+        landmarks[LI.INDEX_FINGER_TIP] = land(WRIST_X + 0.02, WRIST_Y - 0.1)
+        ratio = pinch_ratio_of(make_hand(*landmarks).landmarks)
+        assert ratio == pytest.approx(0.1)
+
 
 class TestPinchDetector:
     def setup_method(self):
         self.detector = PinchDetector(threshold=0.35)
 
     def test_activates_below_enter_threshold(self):
-        assert not self.detector.update(0.30)  # above on-threshold 0.28
-        assert self.detector.update(0.25)
+        assert not self.detector.update(0.36)
+        assert self.detector.update(0.35)
         assert self.detector.active
 
     def test_stays_active_across_off_threshold(self):
-        assert self.detector.update(0.25)
-        assert self.detector.update(0.38)  # still below off-threshold 0.42
+        assert self.detector.update(0.30)
+        assert self.detector.update(0.40)  # still below off-threshold 0.4375
         assert self.detector.active
         assert not self.detector.update(0.45)
         assert not self.detector.active
 
     def test_hysteresis_prevents_rapid_reentry(self):
-        assert not self.detector.update(0.32)
-        assert self.detector.update(0.25)
+        assert not self.detector.update(0.36)
+        assert self.detector.update(0.30)
         assert not self.detector.update(0.45)
-        assert not self.detector.update(0.36)  # too wide to re-enter (on <= 0.28)
-        assert self.detector.update(0.25)
+        assert not self.detector.update(0.36)  # too wide to re-enter (on <= 0.35)
+        assert self.detector.update(0.30)
         assert self.detector.active
 
     def test_reset_clears_active(self):
@@ -237,6 +246,17 @@ class TestClassifier:
         result = self.classify(make_hand(*landmarks))
         assert result.gesture == Gesture.FIST
         assert result.pinch_active is False
+
+    def test_pinch_can_start_with_a_curled_but_reachable_index_tip(self):
+        landmarks = [land(WRIST_X, WRIST_Y) for _ in range(21)]
+        landmarks[LI.MIDDLE_FINGER_MCP] = land(WRIST_X, WRIST_Y + 0.10)
+        landmarks[LI.INDEX_FINGER_MCP] = land(WRIST_X, WRIST_Y - 0.05)
+        landmarks[LI.INDEX_FINGER_PIP] = land(WRIST_X, WRIST_Y - 0.30)
+        landmarks[LI.INDEX_FINGER_TIP] = land(WRIST_X + 0.10, WRIST_Y - 0.10)
+        landmarks[LI.THUMB_TIP] = landmarks[LI.INDEX_FINGER_TIP]
+        result = self.classify(make_hand(*landmarks))
+        assert result.gesture == Gesture.PINCH
+        assert result.pinch_active is True
 
 
 class TestFingerEnumeration:

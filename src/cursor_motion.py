@@ -20,6 +20,8 @@ class CursorMotion:
         self._clock = clock
         self._tau = 0.0 if alpha == 1 else -1 / (60 * math.log1p(-alpha))
         self._dead_zone = dead_zone
+        self._speed_distance = 120.0
+        self._max_speedup = 8.0
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
@@ -68,7 +70,13 @@ class CursorMotion:
                 return
             dt = max(0.0, now - self._last_tick)
             self._last_tick = now
-            gain = 1.0 if self._tau == 0 else -math.expm1(-dt / self._tau)
+            distance = math.dist(self._position, self._target)
+            speedup = min(
+                self._max_speedup,
+                1.0 + distance / self._speed_distance,
+            )
+            effective_tau = self._tau / speedup if self._tau else 0.0
+            gain = 1.0 if effective_tau == 0 else -math.expm1(-dt / effective_tau)
             self._position = tuple(
                 p + gain * (t - p) for p, t in zip(self._position, self._target)
             )

@@ -83,10 +83,8 @@ def controller(mouse=None, volume=None, **kwargs):
         cursor=CursorConfig(
             smoothing_alpha=1.0,
             dead_zone=0.0,
-            sensitivity=1.0,
-            vertical_sensitivity=1.0,
-            edge_margin=0.0,
-            vertical_bottom=1.0,
+            overscan=1.0,
+            drag_sensitivity=1.0,
         ),
         mappings=GestureMappingsConfig(),
         scroll=ScrollConfig(**kwargs.pop("scroll", {})),
@@ -101,7 +99,12 @@ def controller(mouse=None, volume=None, **kwargs):
 class TestCursorSmoother:
     def test_ema_and_dead_zone(self):
         smoother = CursorSmoother(
-            CursorConfig(smoothing_alpha=0.5, dead_zone=10, sensitivity=1.0, edge_margin=0.0), (100, 100)
+            CursorConfig(
+                smoothing_alpha=0.5,
+                dead_zone=10,
+                overscan=1.0,
+            ),
+            (100, 100),
         )
         assert smoother.update((0.0, 0.0)) == (0, 0)
         assert smoother.update((1.0, 1.0)) == (50, 50)
@@ -111,9 +114,7 @@ class TestCursorSmoother:
         smoother = CursorSmoother(
             CursorConfig(
                 smoothing_alpha=1.0,
-                sensitivity=1.0,
-                vertical_sensitivity=1.0,
-                edge_margin=0.0,
+                overscan=1.0,
             ),
             (100, 100),
         )
@@ -123,41 +124,17 @@ class TestCursorSmoother:
         smoother = CursorSmoother(
             CursorConfig(
                 smoothing_alpha=1.0,
-                sensitivity=1.0,
-                vertical_sensitivity=1.0,
-                edge_margin=0.0,
-                vertical_bottom=1.0,
+                overscan=1.0,
             ),
             (100, 100),
         )
         smoother.update((0.2, 0.2))
         smoother.reset()
-        assert smoother.update((0.8, 0.8)) == (79, 79)
+        assert smoother.update((0.8, 0.8)) == (80, 80)
 
-    def test_sensitivity_reaches_screen_edges(self):
+    def test_overscan_reaches_screen_edges_early(self):
         smoother = CursorSmoother(
-            CursorConfig(smoothing_alpha=1.0, dead_zone=0.0, sensitivity=2.0, edge_margin=0.0),
-            (100, 100),
-        )
-        assert smoother.update((0.0, 0.0)) == (0, 0)
-        assert smoother.update((1.0, 1.0)) == (99, 99)
-
-    def test_vertical_sensitivity_reaches_bottom_earlier(self):
-        smoother = CursorSmoother(
-            CursorConfig(
-                smoothing_alpha=1.0,
-                dead_zone=0.0,
-                sensitivity=1.0,
-                vertical_sensitivity=2.0,
-                edge_margin=0.0,
-            ),
-            (100, 100),
-        )
-        assert smoother.update((0.5, 0.75)) == (50, 99)
-
-    def test_edge_margin_expands_camera_tracking_area(self):
-        smoother = CursorSmoother(
-            CursorConfig(smoothing_alpha=1.0, dead_zone=0.0, sensitivity=1.0, edge_margin=0.1),
+            CursorConfig(smoothing_alpha=1.0, dead_zone=0.0, overscan=1.25),
             (100, 100),
         )
         assert smoother.update((0.1, 0.1)) == (0, 0)
@@ -252,7 +229,7 @@ class TestMouseActions:
         assert self.mouse.calls[-1] == ("up",)
         assert self.controller.toggle_enabled() is True
         self.controller.move_pointer((0.8, 0.8))
-        assert self.mouse.calls[-1] == ("move", 799, 639)
+        assert self.mouse.calls[-1] == ("move", 800, 640)
 
 
 class TestCooldownActions:
@@ -280,7 +257,7 @@ class TestCooldownActions:
         c = controller(mouse, volume)
         assert c.process(frame(Gesture.TWO_UP), now=0.0) is None
         assert c.process(frame(Gesture.THUMBS_DOWN), now=0.0) is None
-        assert mouse.calls == [("scroll", 3)]
+        assert mouse.calls == [("scroll", 300)]
         assert volume.calls == [0.46]
 
     def test_disabled_controller_blocks_scroll_and_volume(self):

@@ -9,9 +9,9 @@ from typing import Callable, Protocol
 
 import pyautogui
 
+from .cursor_motion import CursorMotion
 from .config import CursorConfig, GestureMappingsConfig, ScrollConfig, VolumeConfig
 from .gesture_classifier import FrameGesture, Gesture
-from .cursor_motion import CursorMotion
 from .stabilizer import PinchEvent
 
 
@@ -122,30 +122,17 @@ def normalized_to_screen(
     normalized: tuple[float, float],
     width: int,
     height: int,
-    sensitivity: float,
-    edge_margin: float,
-    vertical_sensitivity: float | None = None,
-    vertical_bottom: float = 1.0,
+    overscan: float,
 ) -> tuple[float, float]:
-    """Map normalized camera coordinates to screen-space float coordinates.
-
-    The tracking area shrinks to the ``edge_margin`` band, then expands around
-    the centre by the horizontal and vertical sensitivity values (clamped at
-    screen edges). A separate helper keeps ordinary pointer control and the
-    drag anchor math consistent.
-    """
+    """Linearly map the camera frame onto a centred oversized virtual screen."""
     x = max(0.0, min(1.0, float(normalized[0])))
     y = max(0.0, min(1.0, float(normalized[1])))
-    raw_y = y
-    if edge_margin > 0.0:
-        x = (x - edge_margin) / (1.0 - 2.0 * edge_margin)
-        y = (y - edge_margin) / (1.0 - 2.0 * edge_margin)
-    sensitivity_y = sensitivity if vertical_sensitivity is None else vertical_sensitivity
-    x = max(0.0, min(1.0, 0.5 + (x - 0.5) * sensitivity))
-    y = max(0.0, min(1.0, 0.5 + (y - 0.5) * sensitivity_y))
-    if raw_y >= 0.5:
-        y = max(y, min(1.0, 0.5 + 0.5 * (raw_y - 0.5) / (vertical_bottom - 0.5)))
-    return x * (width - 1), y * (height - 1)
+    screen_x = width / 2 + (x - 0.5) * width * overscan
+    screen_y = height / 2 + (y - 0.5) * height * overscan
+    return (
+        max(0.0, min(width - 1, screen_x)),
+        max(0.0, min(height - 1, screen_y)),
+    )
 
 
 class CursorSmoother:
@@ -157,10 +144,7 @@ class CursorSmoother:
         self._alpha = config.smoothing_alpha
         self._dead_zone = config.dead_zone
         self._width, self._height = screen_size
-        self._sensitivity = config.sensitivity
-        self._vertical_sensitivity = config.vertical_sensitivity
-        self._edge_margin = config.edge_margin
-        self._vertical_bottom = config.vertical_bottom
+        self._overscan = config.overscan
         self._position: tuple[float, float] | None = None
 
     @property
@@ -178,10 +162,7 @@ class CursorSmoother:
             normalized,
             self._width,
             self._height,
-            self._sensitivity,
-            self._edge_margin,
-            self._vertical_sensitivity,
-            self._vertical_bottom,
+            self._overscan,
         )
         if self._position is None:
             self._position = target
@@ -220,8 +201,9 @@ class ActionController:
         self._width, self._height = size
         self._alpha = filter_config.smoothing_alpha
         self._dead_zone = cursor.dead_zone
-        self._drag_gain_x = cursor.sensitivity
-        self._drag_gain_y = cursor.vertical_sensitivity
+        self._cursor_overscan = cursor.overscan
+        self._drag_gain_x = cursor.drag_sensitivity
+        self._drag_gain_y = cursor.drag_sensitivity
         self._mappings = mappings
         self._scroll = scroll
         self._volume_config = volume
@@ -292,9 +274,7 @@ class ActionController:
                 anchor_norm,
                 self._width,
                 self._height,
-                self._drag_gain_x,
-                0.0,
-                self._drag_gain_y,
+                self._cursor_overscan,
             )
             anchor_screen = (round(mapped[0]), round(mapped[1]))
         self._drag_anchor_screen = anchor_screen

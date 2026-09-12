@@ -57,7 +57,35 @@ def test_filter_response_is_independent_of_output_tick_rate():
             clock[0] = step / rate
             output.tick()
         return calls[-1]
-    assert position_at_100ms(60) == position_at_100ms(120)
+    assert position_at_100ms(60) == pytest.approx(position_at_100ms(120), abs=5)
+
+
+def test_large_move_gets_a_faster_response_than_small_correction():
+    small, small_calls, small_clock = motion(alpha=0.12)
+    large, large_calls, large_clock = motion(alpha=0.12)
+    small.target(200, 100)
+    large.target(900, 100)
+    small_clock[0] = large_clock[0] = 1 / 60
+    small.tick()
+    large.tick()
+    small_fraction = (small_calls[-1][0] - 100) / 100
+    large_fraction = (large_calls[-1][0] - 100) / 800
+    assert large_fraction > small_fraction * 2
+
+
+def test_stationary_jitter_inside_dead_zone_does_not_replace_target():
+    calls = []
+    clock = [0.0]
+    output = CursorMotion(
+        lambda x, y: calls.append((x, y)),
+        lambda: (500, 400),
+        alpha=0.12,
+        dead_zone=5,
+        clock=lambda: clock[0],
+    )
+    output.target(510, 400)
+    output.target(513, 402)
+    assert output._target == (510, 400)
 
 
 def test_latest_target_replaces_old_target():

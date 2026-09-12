@@ -20,24 +20,22 @@
     "stable_ms": 120
   },
   "pinch": {
-    "threshold": 0.35,
+    "threshold": 0.4,
     "drag_hold_ms": 400,
     "click_cooldown_ms": 350,
-    "confirm_frames": 3
+    "confirm_frames": 2
   },
   "cursor": {
-    "smoothing_alpha": 0.3,
-    "dead_zone": 3.0,
-    "sensitivity": 1.4,
-    "vertical_sensitivity": 1.8,
-    "edge_margin": 0.1,
-    "vertical_bottom": 0.6,
-    "pinch_guard_ratio": 0.6,
+    "smoothing_alpha": 0.12,
+    "dead_zone": 5.0,
+    "overscan": 1.5,
+    "drag_sensitivity": 1.4,
+    "pinch_guard_ratio": 0.65,
     "pinch_release_ms": 180
   },
   "scroll": {
     "enabled": true,
-    "wheel_step": 3,
+    "wheel_step": 300,
     "cooldown_ms": 120
   },
   "volume": {

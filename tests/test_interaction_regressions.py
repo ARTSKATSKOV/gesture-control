@@ -56,13 +56,12 @@ def test_scroll_requires_current_pose_to_match_confirmed_pose():
     assert mouse.calls == []
 
 
-def test_bottom_reached_at_60_percent_with_center_and_horizontal_unchanged():
-    smoother = CursorSmoother(CursorConfig(smoothing_alpha=1, dead_zone=0), (1001, 801))
-    assert smoother.update((0.5, 0.5)) == (500, 400)
-    assert smoother.update((0.5, 0.6)) == (500, 800)
-    assert smoother.update((0.5, 0.8)) == (500, 800)
-    assert smoother.update((0.2, 0.5)) == (0, 400)
-    assert smoother.update((0.8, 0.5)) == (1000, 400)
+def test_linear_overscan_keeps_center_and_reaches_all_edges_early():
+    smoother = CursorSmoother(CursorConfig(smoothing_alpha=1, dead_zone=0), (1280, 960))
+    assert smoother.update((0.5, 0.5)) == (640, 480)
+    assert smoother.update((1 / 6, 1 / 6)) == (0, 0)
+    assert smoother.update((5 / 6, 5 / 6)) == (1279, 959)
+    assert smoother.update((0.75, 0.25)) == (1120, 120)
 
 
 def test_drag_uses_knuckle_and_ignores_curling_tip():
@@ -148,11 +147,11 @@ def test_camera_failure_releases_drag_and_preserves_full_size_preview():
 
 
 @pytest.mark.parametrize("overrides", [
-    {"cursor": {"vertical_bottom": 0.5}},
-    {"cursor": {"vertical_bottom": 1.01}},
+    {"cursor": {"overscan": 0.9}},
+    {"cursor": {"overscan": 3.1}},
     {"cursor": {"pinch_guard_ratio": 0}},
     {"cursor": {"pinch_release_ms": -1}},
-    {"cursor": {"sensitivity": float("nan")}},
+    {"cursor": {"overscan": float("nan")}},
     {"cursor": {"dead_zone": float("inf")}},
 ])
 def test_invalid_interaction_settings_are_rejected(overrides):
