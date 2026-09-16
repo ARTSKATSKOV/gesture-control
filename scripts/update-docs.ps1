@@ -1,4 +1,4 @@
-$ProjectPath = "C:\Users\awesa\Projects\gesture-control"
+$ProjectPath = "C:\Users\awesa\jarvis\Projects\gesture-control"
 
 $Prompt = @"
 Update the Obsidian documentation for the current project.
