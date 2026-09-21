@@ -59,6 +59,20 @@ def _key_matches(key: int, configured: str) -> bool:
     return key == ord(normalized[0]) if normalized else False
 
 
+def preview_visible() -> bool:
+    """Whether the HighGUI preview window is currently on screen.
+
+    ``WND_PROP_VISIBLE`` reports 1.0 while the window is shown and 0.0 once it
+    has been dismissed; a window that never existed reports 0.0 as well, so
+    callers must only consult this after the first ``imshow``. Some HighGUI
+    backends raise instead of returning a value for a destroyed window.
+    """
+    try:
+        return cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) >= 1
+    except cv2.error:
+        return False
+
+
 class FpsCounter:
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
@@ -93,6 +107,7 @@ def run(config: AppConfig | None = None) -> None:
     fps = FpsCounter()
     enabled = True
     failed_reads = 0
+    preview_shown = False
 
     try:
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.camera.width)
@@ -113,7 +128,12 @@ def run(config: AppConfig | None = None) -> None:
                 stabilizer.reset()
                 classifier.classify(None)
                 failed_reads += 1
-                if _key_matches(cv2.waitKey(1) & 0xFF, config.hotkeys.quit):
+                key = cv2.waitKey(1) & 0xFF
+                if _key_matches(key, config.hotkeys.quit):
+                    break
+                # Nothing is drawn on this path, so a window only counts as
+                # dismissed once a preview has actually been shown.
+                if preview_shown and not preview_visible():
                     break
                 if failed_reads >= 30:
                     raise RuntimeError("Camera stopped delivering frames; reconnect it and restart.")
@@ -162,8 +182,12 @@ def run(config: AppConfig | None = None) -> None:
                 cursor=config.cursor,
             )
             cv2.imshow(WINDOW_NAME, frame)
+            preview_shown = True
             key = cv2.waitKey(1) & 0xFF
-            if _key_matches(key, config.hotkeys.quit):
+            # waitKey pumps the GUI message loop, so this is the first point at
+            # which a user close (X / Alt+F4) is observable. Leaving the loop
+            # here is what keeps the next imshow from recreating the window.
+            if not preview_visible() or _key_matches(key, config.hotkeys.quit):
                 break
             if _key_matches(key, config.hotkeys.toggle):
                 enabled = controller.toggle_enabled()

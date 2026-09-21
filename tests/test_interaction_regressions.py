@@ -136,6 +136,7 @@ def test_camera_failure_releases_drag_and_preserves_full_size_preview():
          patch("src.main.draw_overlay") as overlay, \
          patch("src.main.cv2.imshow"), \
          patch("src.main.cv2.destroyAllWindows"), \
+         patch("src.main.cv2.getWindowProperty", return_value=1.0), \
          patch("src.main.cv2.waitKey", side_effect=[255] * 10 + [27]):
         run(AppConfig.defaults())
     assert mouse.calls == [("down",), ("up",)]
