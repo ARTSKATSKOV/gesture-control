@@ -1,18 +1,26 @@
-# Gesture Control (185)
+# Gesture Control
 
-Camera-based hand-gesture control of the Windows cursor — move, pinch-click, drag, scroll.
-
-- **Repo:** `C:\Users\awesa\jarvis\Projects\gesture-control` (canonical)
-- **Stack:** Python — OpenCV, MediaPipe, PyAutoGUI, Pillow, NumPy; pytest
-- **Tests:** 169 passing (`\.venv/Scripts/python.exe -m pytest`)
-- **Run:** `\.venv/Scripts/python.exe src/main.py`
-
-## Engineering Memory
-
-Architecture, decisions, progress and risks live in the Obsidian vault:
-
-`C:\Users\awesa\jarvis\Obsidian Vault\Raw\Engineering Memory\Projects\185 - Gesture Controlled Interface\`
+Camera-based hand gestures for controlling the Windows cursor: move, pinch-click, drag, scroll, and adjust volume.
 
 ## Status
 
-Core pipeline implemented and covered by tests. **Not yet validated against real hardware** — no live webcam frame, MediaPipe run or PyAutoGUI side effect has happened. See `UX_REVIEW.md` and `docs/acceptance/CHECKLIST-live.md` for the live acceptance run.
+The control pipeline is implemented and covered by automated tests (173 passing on 2026-09-24). A documented live acceptance run with a webcam and the actual Windows cursor is still pending. See [the live checklist](docs/acceptance/CHECKLIST-live.md) for what remains to be verified before calling the application ready for everyday use.
+
+## Run on Windows
+
+Requires Python 3.14 and a webcam. The MediaPipe hand-landmarker model is included in `models/hand_landmarker.task`.
+
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe src/main.py
+```
+
+Run the automated checks with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+```
+
+The preview window has to be focused for its Space and Esc shortcuts. The physical mouse corner remains the PyAutoGUI fail-safe. Current limitations and the live test procedure are described in [UX_REVIEW.md](UX_REVIEW.md) and the [checklist](docs/acceptance/CHECKLIST-live.md).
