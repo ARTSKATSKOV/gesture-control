@@ -13,7 +13,7 @@ Requires Python 3.14 and a webcam. The MediaPipe hand-landmarker model is includ
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe src/main.py
+.\.venv\Scripts\python.exe -m src.main
 ```
 
 Run the automated checks with:
