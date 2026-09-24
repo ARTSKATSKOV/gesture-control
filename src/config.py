@@ -132,6 +132,7 @@ class CursorConfig:
     smoothing_alpha: float = 0.12
     dead_zone: float = 5.0
     overscan: float = 1.5
+    overscan_y: float = 2.5
     drag_sensitivity: float = 1.4
     pinch_guard_ratio: float = 0.65
     pinch_release_ms: int = 180
@@ -143,6 +144,8 @@ class CursorConfig:
             raise ConfigError("cursor.dead_zone must be >= 0")
         if not 1.0 <= self.overscan <= 3.0:
             raise ConfigError("cursor.overscan must be in [1, 3]")
+        if not 1.0 <= self.overscan_y <= 3.0:
+            raise ConfigError("cursor.overscan_y must be in [1, 3]")
         if self.drag_sensitivity <= 0:
             raise ConfigError("cursor.drag_sensitivity must be > 0")
         if not 0 < self.pinch_guard_ratio < 1:
@@ -181,8 +184,8 @@ class VolumeConfig:
 class HandConfig:
     model_path: str = "models/hand_landmarker.task"
     num_hands: int = 1
-    min_hand_detection_confidence: float = 0.5
-    min_hand_presence_confidence: float = 0.5
+    min_hand_detection_confidence: float = 0.65
+    min_hand_presence_confidence: float = 0.6
     min_tracking_confidence: float = 0.5
     track_width: int = 256
     track_height: int = 192
@@ -202,6 +205,35 @@ class HandConfig:
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ConfigError(f"hand.{name} must be in [0, 1]")
+
+
+@dataclass(frozen=True)
+class TrackingConfig:
+    """Gates that decide whether a tracked hand may act on Windows at all.
+
+    The tracker happily extrapolates a hand that has left the frame and happily
+    reports a face as a hand. Both used to reach the action layer unchanged,
+    which produced clicks when the hand disappeared and a mouse button that
+    stayed pressed when the hand left during a drag.
+    """
+
+    frame_margin: float = 0.02
+    min_hand_score: float = 0.6
+    min_palm_size: float = 0.01
+    max_palm_size: float = 0.5
+    motion_blur_speed: float = 2.5
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.frame_margin < 0.5:
+            raise ConfigError("tracking.frame_margin must be in [0, 0.5)")
+        if not 0.0 <= self.min_hand_score <= 1.0:
+            raise ConfigError("tracking.min_hand_score must be in [0, 1]")
+        if self.min_palm_size <= 0:
+            raise ConfigError("tracking.min_palm_size must be > 0")
+        if self.max_palm_size <= self.min_palm_size:
+            raise ConfigError("tracking.max_palm_size must be > min_palm_size")
+        if self.motion_blur_speed <= 0:
+            raise ConfigError("tracking.motion_blur_speed must be > 0")
 
 
 @dataclass(frozen=True)
@@ -250,6 +282,7 @@ class HotkeysConfig:
 class AppConfig:
     camera: CameraConfig
     hand: HandConfig
+    tracking: TrackingConfig
     stabilizer: StabilizerConfig
     pinch: PinchConfig
     cursor: CursorConfig
@@ -263,6 +296,7 @@ class AppConfig:
         return cls(
             camera=CameraConfig(),
             hand=HandConfig(),
+            tracking=TrackingConfig(),
             stabilizer=StabilizerConfig(),
             pinch=PinchConfig(),
             cursor=CursorConfig(),

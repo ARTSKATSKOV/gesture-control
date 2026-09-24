@@ -123,12 +123,21 @@ def normalized_to_screen(
     width: int,
     height: int,
     overscan: float,
+    overscan_y: float | None = None,
 ) -> tuple[float, float]:
-    """Linearly map the camera frame onto a centred oversized virtual screen."""
+    """Linearly map the camera frame onto a centred oversized virtual screen.
+
+    The two axes are independent. A pointing hand extends *below* the index
+    fingertip, so the vertical zone has to be shorter than the horizontal one:
+    with a shared gain the fingertip had to reach the bottom edge of the frame
+    for the taskbar, which pushed the palm out of the picture and lost the hand.
+    The centre stays the centre on both axes.
+    """
+    vertical = overscan if overscan_y is None else overscan_y
     x = max(0.0, min(1.0, float(normalized[0])))
     y = max(0.0, min(1.0, float(normalized[1])))
     screen_x = width / 2 + (x - 0.5) * width * overscan
-    screen_y = height / 2 + (y - 0.5) * height * overscan
+    screen_y = height / 2 + (y - 0.5) * height * vertical
     return (
         max(0.0, min(width - 1, screen_x)),
         max(0.0, min(height - 1, screen_y)),
@@ -145,6 +154,7 @@ class CursorSmoother:
         self._dead_zone = config.dead_zone
         self._width, self._height = screen_size
         self._overscan = config.overscan
+        self._overscan_y = config.overscan_y
         self._position: tuple[float, float] | None = None
 
     @property
@@ -163,6 +173,7 @@ class CursorSmoother:
             self._width,
             self._height,
             self._overscan,
+            self._overscan_y,
         )
         if self._position is None:
             self._position = target
@@ -202,6 +213,7 @@ class ActionController:
         self._alpha = filter_config.smoothing_alpha
         self._dead_zone = cursor.dead_zone
         self._cursor_overscan = cursor.overscan
+        self._cursor_overscan_y = cursor.overscan_y
         self._drag_gain_x = cursor.drag_sensitivity
         self._drag_gain_y = cursor.drag_sensitivity
         self._mappings = mappings
@@ -275,6 +287,7 @@ class ActionController:
                 self._width,
                 self._height,
                 self._cursor_overscan,
+                self._cursor_overscan_y,
             )
             anchor_screen = (round(mapped[0]), round(mapped[1]))
         self._drag_anchor_screen = anchor_screen

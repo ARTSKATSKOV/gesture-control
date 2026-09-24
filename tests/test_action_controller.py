@@ -79,11 +79,14 @@ def frame(gesture, pointer=(0.5, 0.5)):
 
 
 def controller(mouse=None, volume=None, **kwargs):
+    # A 1:1 mapping on both axes: these doubles describe actions, not the reach
+    # tuning, so the tests set the vertical gain explicitly alongside overscan.
     return ActionController(
         cursor=CursorConfig(
             smoothing_alpha=1.0,
             dead_zone=0.0,
             overscan=1.0,
+            overscan_y=1.0,
             drag_sensitivity=1.0,
         ),
         mappings=GestureMappingsConfig(),
@@ -125,6 +128,7 @@ class TestCursorSmoother:
             CursorConfig(
                 smoothing_alpha=1.0,
                 overscan=1.0,
+                overscan_y=1.0,
             ),
             (100, 100),
         )

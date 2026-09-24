@@ -175,7 +175,16 @@ class GestureClassifier:
     def __init__(self, pinch: PinchConfig) -> None:
         self._pinch_detector = PinchDetector(threshold=pinch.threshold)
 
-    def classify(self, hand: Hand | None) -> FrameGesture:
+    def classify(self, hand: Hand | None, motion_blurred: bool = False) -> FrameGesture:
+        """Classify one frame; ``motion_blurred`` freezes the pinch decision.
+
+        On a fast throw the landmarks smear and the thumb/index ratio collapses,
+        which used to read as a pinch and produced a freeze plus a click. A
+        blurred frame leaves the pinch detector untouched and reports no pinch;
+        the loop also skips the debounce and the state machine on such a frame,
+        so it can neither start nor end a pinch. The cursor still follows the
+        posture of a throw, and a button that is already held stays held.
+        """
         if hand is None or len(hand.landmarks) < 21:
             self._pinch_detector.reset()
             return FrameGesture(
@@ -186,18 +195,24 @@ class GestureClassifier:
             )
         landmarks = hand.landmarks
         ratio = pinch_ratio_of(landmarks)
-        was_pinching = self._pinch_detector.active
-        detector_active = self._pinch_detector.update(ratio)
-        palm = hand_size(landmarks)
-        index_reachable = palm > 0 and (
-            distance(landmarks[LI.WRIST], landmarks[LI.INDEX_FINGER_TIP]) / palm
-            >= 0.65
-        )
-        # An established pinch stays active while the index curls. A new pinch
-        # only needs the fingertip outside the folded-fist area.
-        pinch_active = detector_active and (was_pinching or index_reachable)
-        if not pinch_active:
-            self._pinch_detector.reset()
+        if motion_blurred:
+            # The detector is deliberately left untouched: a smeared frame must
+            # neither start nor end a pinch. The loop skips the debounce and the
+            # state machine on such a frame, so this is not a release either.
+            pinch_active = False
+        else:
+            was_pinching = self._pinch_detector.active
+            detector_active = self._pinch_detector.update(ratio)
+            palm = hand_size(landmarks)
+            index_reachable = palm > 0 and (
+                distance(landmarks[LI.WRIST], landmarks[LI.INDEX_FINGER_TIP]) / palm
+                >= 0.65
+            )
+            # An established pinch stays active while the index curls. A new pinch
+            # only needs the fingertip outside the folded-fist area.
+            pinch_active = detector_active and (was_pinching or index_reachable)
+            if not pinch_active:
+                self._pinch_detector.reset()
         index_tip = landmarks[LI.INDEX_FINGER_TIP]
         pointer = (index_tip.x, index_tip.y)
         if pinch_active:

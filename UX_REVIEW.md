@@ -14,12 +14,25 @@ live session with the user. No camera footage was captured or uploaded.
 | P1 | Cursor looks like low-FPS motion even when the camera is acceptable. | Previously only one OS movement was emitted per inference frame, with another camera-rate smoothing stage. `CursorMotion` now interpolates toward the latest target using elapsed time on a separate worker. Its requested cadence is 120 Hz; scheduling and hardware determine actual cadence. The live controller bypasses the previous second smoothing stage. After live feedback that fixed smoothing was stable only for slow motion, the filter now increases its response for large target gaps while strongly smoothing small corrections. |
 | P1 | Pinching moves the pointer downward. | The old loop could replace a new pose with the previous stabilized `POINT`; raw pinch flicker and the requirement for an extended finger made pinch unreliable. Current geometry now wins over stale labels, approaching pinch freezes output, established pinch survives index folding, and normal pointing stays blocked briefly after pinch evidence/event. Pinch onset uses the thumb/index distance with robust palm scaling and a simple folded-fist guard. Freezing cancels pending interpolated movement under the same lock as output. |
 | P1 | Pinch release or dragging follows a bending fingertip. | Drag uses the index MCP (knuckle), anchored to the actual system cursor for the live backend. A raw release freezes drag movement while release confirmation completes. The relative target is clamped to the screen. |
-| P1 | Cursor calibration feels unpredictable. | Live feedback rejected the asymmetric nonlinear calibration. Mapping is now linear and identical on both axes: camera center maps to screen center and the edges of the smaller green control area map to the screen edges. The full red camera frame remains available for hand detection. With 1.5x overscan, the control area occupies the centered two-thirds of the camera frame, leaving room around it for the rest of the hand. The cursor follows the index fingertip directly. |
+| P1 | Cursor calibration feels unpredictable. | Live feedback rejected the asymmetric nonlinear calibration. Mapping is now linear, with camera center mapping to screen center and the edges of the smaller green control area mapping to the screen edges. After the 2026-09-24 live run it is per-axis: the horizontal gain comes from `cursor.overscan` (1.5) and the vertical one from `cursor.overscan_y` (2.5), because a pointing hand extends below the index fingertip. The full red camera frame remains available for hand detection. The cursor follows the index fingertip directly. |
 | P1 | Camera read failure can leave a button held and ignore Esc. | Failed reads now cancel pinch state, release drag, clear gesture history, and process Esc. Repeated failures terminate with an error. Nested cleanup releases camera/window resources even if controller or tracker cleanup fails. The motion worker expires stale movement targets after 200 ms. |
 | P2 | Two-finger scrolling feels much too slow. | Following live feedback, the default wheel step is now 300 clicks per accepted gesture, exactly 100x the previous value of 3. This is intentionally aggressive and remains configurable. |
 | P2 | Stale scroll/volume action fires after pose changes, including during pinch. | Non-cursor actions require agreement between the current and confirmed gesture. Pinch and its release guard suppress these actions. |
 | P2 | Normal screen-corner targeting activates the emergency stop. | Generated movement avoids the exact fail-safe corner by one horizontal pixel. Moving the physical mouse into a corner still triggers PyAutoGUI's fail-safe. Button release is allowed during fail-safe cleanup. |
 | P2 | Non-finite JSON numbers can propagate into coordinates. | Configuration loading rejects NaN and infinity for numeric float fields. |
+
+## Live-run findings fixed — 2026-09-24
+
+The first live acceptance run (see [the checklist](docs/acceptance/CHECKLIST-live.md))
+reported an unreachable screen bottom with the hand lost at the frame edge, false
+clicks when the hand disappeared, a mouse button left pressed when the hand left
+during a drag, a false pinch during a fast throw, and a face occasionally
+detected as a hand. All five are addressed by the per-axis reach and the
+`tracking` gates described above; the checklist records each reported symptom,
+its cause and its fix, plus what the next live run has to re-verify. The face
+detection gate is the one item that still needs a live check: it is built from
+MediaPipe confidence floors and geometry plausibility, not from a captured
+false positive.
 
 ## Verification
 
@@ -29,6 +42,10 @@ live session with the user. No camera footage was captured or uploaded.
   reachability with a preserved center.
 - A mocked full camera loop checks drag release on capture failure and verifies
   that inference uses 256x192 frames while preview remains 640x480.
+- A scripted-hands run of the full loop checks the two worst live-run defects: a
+  hand leaving the frame during a drag releases the button exactly once and
+  never clicks, and a fast throw cannot click while a deliberate slow pinch
+  still does.
 - Deterministic output tests feed 15 camera frames per second and verify multiple
   intermediate movements, equivalent filter response at 60/120 output ticks per
   second, and replacement of old targets instead of a growing queue.
@@ -50,18 +67,21 @@ live session with the user. No camera footage was captured or uploaded.
    motion, but cannot guarantee releasing an already-held drag button in that
    situation. Isolated capture with a watchdog is a further architectural step.
 3. **P2 — Pinch timing still depends partly on FPS.** Click/drag timing uses
-   elapsed time, but pinch confirmation remains three consecutive frames. A
-   very short tap can be missed at low FPS. A held pinch intentionally becomes
-   drag after the configured 400 ms following confirmation; the overlay now
-   explicitly shows DRAG. This behavior is distinct from unintentional POINT
-   motion during a pinch.
-4. **P2 — Hardware and personal calibration.** The deliberately simple 1.5x
-   overscan matches the requested red detection / green control geometry but
-   still depends on camera framing. Test with the user's normal posture and
-   camera angle; adjust only `cursor.overscan` if the green area needs resizing.
-   Finger extension remains a wrist-distance heuristic and can misclassify
-   strongly rotated/occluded hands. Smaller input frames may reduce precision;
-   reducing resolution further is not justified without measurements.
+   elapsed time, but pinch confirmation remains a fixed number of consecutive
+   frames (`pinch.confirm_frames`, 2 by default). A very short tap can be missed
+   at low FPS. A held pinch intentionally becomes drag after the configured
+   400 ms following confirmation; the overlay now explicitly shows DRAG. This
+   behavior is distinct from unintentional POINT motion during a pinch.
+4. **P2 — Hardware and personal calibration.** The deliberately simple overscan
+   pair matches the requested red detection / green control geometry
+   (`cursor.overscan` for the horizontal zone, the shorter `cursor.overscan_y`
+   for the vertical one) but still depends on camera framing. Test with the
+   user's normal posture and camera angle; the green rectangle in the preview
+   always shows the current control area. Finger extension remains a
+   wrist-distance heuristic and can misclassify strongly rotated/occluded hands;
+   the `tracking` gates reject those frames instead of acting on them. Smaller
+   input frames may reduce precision; reducing resolution further is not
+   justified without measurements.
 5. **P2 — Single screen and concurrent launches.** Cursor bounds come from
    PyAutoGUI's screen size; this is not a calibrated multi-monitor desktop.
    There is no single-instance lock, so launching a second instance can create

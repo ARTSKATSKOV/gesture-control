@@ -20,6 +20,7 @@ class TestDefaults:
         assert cfg.cursor.smoothing_alpha == pytest.approx(0.12)
         assert cfg.cursor.dead_zone == pytest.approx(5.0)
         assert cfg.cursor.overscan == pytest.approx(1.5)
+        assert cfg.cursor.overscan_y == pytest.approx(2.5)
         assert cfg.cursor.drag_sensitivity == pytest.approx(1.4)
         assert cfg.cursor.pinch_guard_ratio == pytest.approx(0.65)
         assert cfg.cursor.pinch_release_ms == 180
@@ -29,6 +30,22 @@ class TestDefaults:
         assert cfg.hand.track_height == 192
         assert cfg.scroll.wheel_step == 300
         assert cfg.scroll.cooldown_ms == 120
+
+    def test_defaults_match_measured_live_run(self):
+        """Thresholds chosen by the 2026-09-24 live acceptance run."""
+        cfg = AppConfig.defaults()
+        assert cfg.tracking.frame_margin == pytest.approx(0.02)
+        assert cfg.tracking.min_hand_score == pytest.approx(0.6)
+        assert cfg.tracking.min_palm_size == pytest.approx(0.01)
+        assert cfg.tracking.max_palm_size == pytest.approx(0.5)
+        assert cfg.tracking.motion_blur_speed == pytest.approx(2.5)
+        assert cfg.hand.min_hand_detection_confidence == pytest.approx(0.65)
+        assert cfg.hand.min_hand_presence_confidence == pytest.approx(0.6)
+
+    def test_vertical_zone_is_shorter_than_the_horizontal_one(self):
+        """The palm hangs below the pointer, so the vertical zone must be shorter."""
+        cfg = AppConfig.defaults()
+        assert cfg.cursor.overscan_y > cfg.cursor.overscan
 
     def test_pinch_threshold_is_normalized_ratio(self):
         cfg = AppConfig.defaults()
@@ -46,6 +63,7 @@ class TestConfigFile:
         assert set(data) == {
             "camera",
             "hand",
+            "tracking",
             "stabilizer",
             "pinch",
             "cursor",
@@ -94,6 +112,15 @@ class TestErrors:
             {"cursor": {"dead_zone": -1}},
             {"cursor": {"overscan": 0.99}},
             {"cursor": {"overscan": 3.01}},
+            {"cursor": {"overscan_y": 0.99}},
+            {"cursor": {"overscan_y": 3.01}},
+            {"tracking": {"frame_margin": 0.5}},
+            {"tracking": {"frame_margin": -0.1}},
+            {"tracking": {"min_hand_score": 1.5}},
+            {"tracking": {"min_palm_size": 0.0}},
+            {"tracking": {"min_palm_size": 0.6, "max_palm_size": 0.5}},
+            {"tracking": {"motion_blur_speed": 0}},
+            {"tracking": {"motion_blur_speed": "2.5"}},
             {"cursor": {"drag_sensitivity": 0}},
             {"scroll": {"wheel_step": 0}},
             {"scroll": {"cooldown_ms": -1}},

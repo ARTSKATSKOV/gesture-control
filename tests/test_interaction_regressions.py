@@ -12,7 +12,7 @@ from src.stabilizer import PinchEvent
 from test_action_controller import FakeMouse, controller, frame
 from test_gesture_classifier import _palm_up, land, make_hand, WRIST_X, WRIST_Y
 from src.gesture_classifier import GestureClassifier
-from src.hand_tracker import LandmarkIndex as LI
+from src.hand_tracker import Hand, LandmarkIndex as LI
 from src.config import PinchConfig
 
 
@@ -56,12 +56,41 @@ def test_scroll_requires_current_pose_to_match_confirmed_pose():
     assert mouse.calls == []
 
 
-def test_linear_overscan_keeps_center_and_reaches_all_edges_early():
+def test_per_axis_overscan_keeps_center_and_reaches_every_edge_early():
+    """The live run reported the whole bottom of the screen as unreachable.
+
+    The vertical zone is now shorter than the horizontal one (overscan_y 2.5
+    against overscan 1.5), so the taskbar is reached while the index fingertip
+    is still at 70% of the frame height and the palm stays inside the picture.
+    """
     smoother = CursorSmoother(CursorConfig(smoothing_alpha=1, dead_zone=0), (1280, 960))
     assert smoother.update((0.5, 0.5)) == (640, 480)
-    assert smoother.update((1 / 6, 1 / 6)) == (0, 0)
-    assert smoother.update((5 / 6, 5 / 6)) == (1279, 959)
-    assert smoother.update((0.75, 0.25)) == (1120, 120)
+    assert smoother.update((1 / 6, 0.5)) == (0, 480)
+    assert smoother.update((5 / 6, 0.5)) == (1279, 480)
+    assert smoother.update((0.5, 0.3)) == (640, 0)
+    assert smoother.update((0.5, 0.7)) == (640, 959)
+    assert smoother.update((0.75, 0.25)) == (1120, 0)
+
+
+def test_bottom_of_the_screen_is_reached_with_the_palm_still_in_frame():
+    """The two fixes have to coexist: reaching the taskbar must not lose the hand."""
+    from src.tracking_quality import assess_hand
+
+    config = AppConfig.defaults()
+    tip_y = 0.5 + 0.5 / config.cursor.overscan_y
+    # A pointing hand with the index fingertip at the bottom edge of the green
+    # zone and the palm (roughly 0.2 of the frame) hanging below it.
+    hand = _palm_up()
+    landmarks = list(hand.landmarks)
+    landmarks[LI.INDEX_FINGER_TIP] = land(0.5, tip_y)
+    for index in range(21):
+        if index == LI.INDEX_FINGER_TIP:
+            continue
+        landmarks[index] = land(landmarks[index].x, landmarks[index].y + 0.2)
+    shifted = Hand(landmarks=tuple(landmarks), handedness="Right", score=1.0)
+    assert assess_hand(shifted, config.tracking).usable
+    smoother = CursorSmoother(CursorConfig(smoothing_alpha=1, dead_zone=0), (1280, 960))
+    assert smoother.update((0.5, tip_y))[1] == 959
 
 
 def test_drag_uses_knuckle_and_ignores_curling_tip():

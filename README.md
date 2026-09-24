@@ -4,7 +4,7 @@ Camera-based hand gestures for controlling the Windows cursor: move, pinch-click
 
 ## Status
 
-The control pipeline is implemented and covered by automated tests (173 passing on 2026-09-24). A documented live acceptance run with a webcam and the actual Windows cursor is still pending. See [the live checklist](docs/acceptance/CHECKLIST-live.md) for what remains to be verified before calling the application ready for everyday use.
+The control pipeline is implemented and covered by automated tests (211 passing on 2026-09-24, synthetic — no camera). The first live acceptance run with a webcam and the real Windows cursor happened on 2026-09-24; its findings are closed and its defects fixed in [the live checklist](docs/acceptance/CHECKLIST-live.md), which also lists what the next run has to re-verify. Two things came out of that run: cursor reach is now configured per axis (`cursor.overscan` horizontally, `cursor.overscan_y` vertically, because the palm hangs below the pointing fingertip) and a new `tracking` section gates which frames may act at all (hand plausibility, frame edges, motion blur).
 
 ## Run on Windows
 

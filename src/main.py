@@ -14,7 +14,17 @@ from .config import AppConfig
 from .gesture_classifier import FrameGesture, Gesture, GestureClassifier
 from .hand_tracker import HandTracker, new_hand_tracker
 from .overlay import OverlayState, draw_overlay
-from .stabilizer import PinchDebounce, PinchStateMachine, TemporalStabilizer
+from .stabilizer import (
+    PinchDebounce,
+    PinchEvent,
+    PinchStateMachine,
+    TemporalStabilizer,
+)
+from .tracking_quality import (
+    MotionGuard,
+    assess_hand,
+    pointer_of,
+)
 
 WINDOW_NAME = "Gesture Control"
 
@@ -104,6 +114,7 @@ def run(config: AppConfig | None = None) -> None:
     pinch_state = PinchStateMachine(config.pinch)
     pinch_debounce = PinchDebounce(config.pinch.confirm_frames)
     classifier = GestureClassifier(config.pinch)
+    motion_guard = MotionGuard(config.tracking)
     fps = FpsCounter()
     enabled = True
     failed_reads = 0
@@ -147,24 +158,57 @@ def run(config: AppConfig | None = None) -> None:
                 interpolation=cv2.INTER_AREA,
             )
             hand = tracker.process(track_frame)
-            raw = classifier.classify(hand)
-            if hand is None or not enabled:
+            # Only a plausible, fully observed hand may act on Windows. A hand
+            # that MediaPipe extrapolated out of the frame used to keep the
+            # mouse button pressed during a drag, and its collapsing geometry
+            # produced a click exactly when the hand disappeared.
+            verdict = assess_hand(hand, config.tracking)
+            usable_hand = hand if verdict.usable else None
+            blurred = motion_guard.update(pointer_of(usable_hand))
+            raw = classifier.classify(usable_hand, motion_blurred=blurred)
+            if usable_hand is None or not enabled:
                 pinch_debounce.reset()
                 stabilizer.reset()
-            stable_gesture = stabilizer.update(raw.gesture)
-            stable_frame = (
+            # A blurred frame must neither start nor end a pinch: skipping the
+            # debounce and the state machine is what turns a fast throw from a
+            # stray click into nothing at all.
+            if blurred:
+                stable_gesture = stabilizer.confirmed
+                pinch_event = PinchEvent.NONE
+            else:
+                stable_gesture = stabilizer.update(raw.gesture)
+                pinch_signal = pinch_debounce.update(raw.pinch_active) if enabled else False
+                pinch_event = pinch_state.update(
+                    pinch_active=pinch_signal,
+                    hand_present=usable_hand is not None if enabled else False,
+                )
+            control = (
                 control_frame(raw, stable_gesture, config.mappings.cursor)
-                if enabled and hand is not None
+                if enabled and usable_hand is not None
                 else None
             )
-            pinch_signal = pinch_debounce.update(raw.pinch_active) if enabled else False
-            pinch_event = pinch_state.update(
-                pinch_active=pinch_signal,
-                hand_present=hand is not None if enabled else False,
-            )
-            controller.process(stable_frame, pinch_event)
+            if blurred and control is not None:
+                # A smeared frame may not freeze, click, scroll or drag on its
+                # own; the one thing it must not break is an already pressed
+                # button, so a running drag keeps following the hand.
+                control = replace(
+                    control,
+                    pinch_active=controller.drag_active,
+                    pinch_ratio=float("inf"),
+                )
+            controller.process(control, pinch_event)
 
             current_gesture = raw.gesture.value
+            if controller.drag_active:
+                interaction = "DRAG: move hand"
+            elif blurred:
+                interaction = "MOTION: events paused"
+            elif enabled and usable_hand is not None and (
+                raw.pinch_active or raw.pinch_ratio <= config.cursor.pinch_guard_ratio
+            ):
+                interaction = "PINCH: cursor locked"
+            else:
+                interaction = ""
             draw_overlay(
                 frame,
                 OverlayState(
@@ -172,11 +216,12 @@ def run(config: AppConfig | None = None) -> None:
                     fps=fps.tick(),
                     enabled=enabled,
                     handedness=raw.handedness,
-                    pinch_ratio=raw.pinch_ratio if hand is not None else None,
-                    interaction=("DRAG: move hand" if controller.drag_active else
-                                 "PINCH: cursor locked" if enabled and hand is not None and (
-                                     raw.pinch_active or raw.pinch_ratio <= config.cursor.pinch_guard_ratio
-                                 ) else ""),
+                    pinch_ratio=raw.pinch_ratio if usable_hand is not None else None,
+                    interaction=interaction,
+                    # Show why a frame was dropped instead of guessing later:
+                    # Art can read the reason straight off the preview.
+                    tracking=verdict.reason,
+                    motion_blurred=blurred,
                 ),
                 hand,
                 cursor=config.cursor,
