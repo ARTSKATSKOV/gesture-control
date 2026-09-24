@@ -1,6 +1,6 @@
-"""Gates that decide which tracked frames may reach the Windows action layer.
+"""Gates that decide what a tracked frame may be trusted to do.
 
-Two separate problems are solved here, both observed in the first live run:
+Two separate problems are solved here, both observed on live runs:
 
 * ``assess_hand`` judges a single tracker result. MediaPipe keeps extrapolating
   a hand that is leaving the frame and occasionally reports a face as a hand.
@@ -8,8 +8,18 @@ Two separate problems are solved here, both observed in the first live run:
   button pressed during a drag, and the collapsing geometry produced a click
   exactly when the hand disappeared.
 * ``MotionGuard`` judges pointer motion between frames. A fast throw smears the
-  landmarks until the thumb and index tips appear to touch, which used to fire
-  a spurious pinch (the cursor froze and a click landed).
+  landmarks until the thumb and index tips appear to touch, which fired a
+  spurious pinch (the cursor froze and a click landed).
+
+The verdict is deliberately split in two, because the two things the app does
+have different requirements:
+
+* moving the cursor needs the pointer (index fingertip) and nothing else — a
+  hand that reaches for the taskbar has its palm partly out of frame, and
+  refusing to move there is exactly what made the bottom of the screen
+  unreachable;
+* clicking, dragging, scrolling and volume need the whole palm, because pinch
+  geometry is measured against the palm span.
 
 Nothing here moves a cursor or presses a button: the module only returns
 verdicts, so every rule stays testable without a camera.
@@ -25,9 +35,10 @@ from typing import Callable, Optional
 from .config import TrackingConfig
 from .hand_tracker import Hand, LandmarkIndex as LI, hand_size
 
-# The landmarks the cursor mapping actually depends on: the palm, which measures
-# the hand, and the index tip, which is the pointer itself. A folded finger that
-# clips the frame edge in an otherwise well-tracked hand is not a reason to stop.
+# The full set of landmarks the pinch/drag mapping depends on: the palm, which
+# measures the hand, and the index tip, which is the pointer itself. A folded
+# finger that clips the frame edge in an otherwise well-tracked hand is not a
+# reason to stop.
 ANCHOR_LANDMARKS = (
     LI.WRIST,
     LI.THUMB_CMC,
@@ -41,12 +52,20 @@ OK = "ok"
 NO_HAND = "no hand"
 LOW_CONFIDENCE = "low confidence"
 IMPLAUSIBLE_PALM = "implausible hand size"
-OUT_OF_FRAME = "hand out of frame"
+POINTER_OUT = "pointer out of frame"
+PALM_OUT = "palm out of frame, cursor only"
 
 
 @dataclass(frozen=True)
 class HandVerdict:
-    usable: bool
+    """What this tracker result may be trusted to do.
+
+    ``pointer_ok``: the pointer is observed, so the cursor may follow it.
+    ``full``: every anchor is observed, so pinch/click/drag/scroll may act.
+    """
+
+    pointer_ok: bool
+    full: bool
     reason: str
 
 
@@ -55,20 +74,23 @@ def _inside(value: float, margin: float) -> bool:
 
 
 def assess_hand(hand: Optional[Hand], config: TrackingConfig) -> HandVerdict:
-    """Decide whether this tracker result may drive Windows at all."""
+    """Decide what this tracker result may drive."""
     if hand is None or len(hand.landmarks) < len(LI):
-        return HandVerdict(False, NO_HAND)
+        return HandVerdict(False, False, NO_HAND)
     if hand.score < config.min_hand_score:
-        return HandVerdict(False, LOW_CONFIDENCE)
+        return HandVerdict(False, False, LOW_CONFIDENCE)
     palm = hand_size(hand.landmarks)
     if not config.min_palm_size <= palm <= config.max_palm_size:
-        return HandVerdict(False, IMPLAUSIBLE_PALM)
+        return HandVerdict(False, False, IMPLAUSIBLE_PALM)
     margin = config.frame_margin
+    tip = hand.landmarks[LI.INDEX_FINGER_TIP]
+    if not (_inside(tip.x, margin) and _inside(tip.y, margin)):
+        return HandVerdict(False, False, POINTER_OUT)
     for index in ANCHOR_LANDMARKS:
         landmark = hand.landmarks[index]
         if not (_inside(landmark.x, margin) and _inside(landmark.y, margin)):
-            return HandVerdict(False, OUT_OF_FRAME)
-    return HandVerdict(True, OK)
+            return HandVerdict(True, False, PALM_OUT)
+    return HandVerdict(True, True, OK)
 
 
 def pointer_of(hand: Optional[Hand]) -> Optional[tuple[float, float]]:

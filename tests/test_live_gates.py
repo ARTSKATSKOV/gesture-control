@@ -142,8 +142,36 @@ def test_overlay_shows_why_a_frame_was_dropped():
     """Art reads the drop reason straight off the preview during a live run."""
     run_result = drive([hand(), hand(dy=1.0), hand()])
     states = run_result.overlay_states()
-    assert [state.tracking for state in states] == ["ok", "hand out of frame", "ok"]
+    assert [state.tracking for state in states] == ["ok", "pointer out of frame", "ok"]
     assert [state.motion_blurred for state in states] == [False, False, False]
+
+
+def test_a_hand_reaching_the_bottom_keeps_moving_but_cannot_click():
+    """The second live report: the bottom stayed unreachable.
+
+    Reaching the taskbar lowers the palm out of the frame while the fingertip
+    stays visible. That frame used to be thrown away entirely, which froze the
+    cursor right where the screen edge is; it must move the cursor and still
+    never click.
+    """
+    reaching = [hand(pinch=True), hand(dy=0.5, pinch=True), hand(dy=0.5, pinch=True)]
+    run_result = drive(reaching + [hand(dy=0.5)])
+    actions = run_result.actions()
+    assert "move" in actions, "a low palm must not freeze the cursor"
+    assert "click" not in actions
+    assert "down" not in actions
+    assert run_result.overlay_states()[-1].tracking == "palm out of frame, cursor only"
+
+
+def test_a_drag_ends_when_the_palm_leaves_the_frame():
+    """A button must never stay down because the palm dipped out of the frame."""
+    held = [hand(dy=0.02 * step, pinch=True) for step in range(1, 9)]
+    leaving = [hand(dy=0.5, pinch=True)] * 3
+    run_result = drive([hand(), hand()] + held + leaving)
+    actions = run_result.actions()
+    assert "down" in actions, "a held pinch must start a drag"
+    assert actions.count("up") == 1
+    assert "click" not in actions
 
 
 def test_overlay_marks_a_blurred_frame():

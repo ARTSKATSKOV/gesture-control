@@ -132,7 +132,7 @@ class CursorConfig:
     smoothing_alpha: float = 0.12
     dead_zone: float = 5.0
     overscan: float = 1.5
-    overscan_y: float = 2.5
+    overscan_y: float = 3.0
     drag_sensitivity: float = 1.4
     pinch_guard_ratio: float = 0.65
     pinch_release_ms: int = 180
@@ -144,8 +144,10 @@ class CursorConfig:
             raise ConfigError("cursor.dead_zone must be >= 0")
         if not 1.0 <= self.overscan <= 3.0:
             raise ConfigError("cursor.overscan must be in [1, 3]")
-        if not 1.0 <= self.overscan_y <= 3.0:
-            raise ConfigError("cursor.overscan_y must be in [1, 3]")
+        # The vertical zone is allowed a wider range: it has to stay short
+        # enough that the taskbar is reachable with the hand still in frame.
+        if not 1.0 <= self.overscan_y <= 4.0:
+            raise ConfigError("cursor.overscan_y must be in [1, 4]")
         if self.drag_sensitivity <= 0:
             raise ConfigError("cursor.drag_sensitivity must be > 0")
         if not 0 < self.pinch_guard_ratio < 1:

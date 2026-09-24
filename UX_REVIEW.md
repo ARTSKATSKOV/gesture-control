@@ -14,7 +14,7 @@ live session with the user. No camera footage was captured or uploaded.
 | P1 | Cursor looks like low-FPS motion even when the camera is acceptable. | Previously only one OS movement was emitted per inference frame, with another camera-rate smoothing stage. `CursorMotion` now interpolates toward the latest target using elapsed time on a separate worker. Its requested cadence is 120 Hz; scheduling and hardware determine actual cadence. The live controller bypasses the previous second smoothing stage. After live feedback that fixed smoothing was stable only for slow motion, the filter now increases its response for large target gaps while strongly smoothing small corrections. |
 | P1 | Pinching moves the pointer downward. | The old loop could replace a new pose with the previous stabilized `POINT`; raw pinch flicker and the requirement for an extended finger made pinch unreliable. Current geometry now wins over stale labels, approaching pinch freezes output, established pinch survives index folding, and normal pointing stays blocked briefly after pinch evidence/event. Pinch onset uses the thumb/index distance with robust palm scaling and a simple folded-fist guard. Freezing cancels pending interpolated movement under the same lock as output. |
 | P1 | Pinch release or dragging follows a bending fingertip. | Drag uses the index MCP (knuckle), anchored to the actual system cursor for the live backend. A raw release freezes drag movement while release confirmation completes. The relative target is clamped to the screen. |
-| P1 | Cursor calibration feels unpredictable. | Live feedback rejected the asymmetric nonlinear calibration. Mapping is now linear, with camera center mapping to screen center and the edges of the smaller green control area mapping to the screen edges. After the 2026-09-24 live run it is per-axis: the horizontal gain comes from `cursor.overscan` (1.5) and the vertical one from `cursor.overscan_y` (2.5), because a pointing hand extends below the index fingertip. The full red camera frame remains available for hand detection. The cursor follows the index fingertip directly. |
+| P1 | Cursor calibration feels unpredictable. | Live feedback rejected the asymmetric nonlinear calibration. Mapping is now linear, with camera center mapping to screen center and the edges of the smaller green control area mapping to the screen edges. After the 2026-09-24 live runs it is per-axis: the horizontal gain comes from `cursor.overscan` (1.5) and the vertical one from `cursor.overscan_y` (3.0), because a pointing hand extends below the index fingertip. The full red camera frame remains available for hand detection. The cursor follows the index fingertip directly. |
 | P1 | Camera read failure can leave a button held and ignore Esc. | Failed reads now cancel pinch state, release drag, clear gesture history, and process Esc. Repeated failures terminate with an error. Nested cleanup releases camera/window resources even if controller or tracker cleanup fails. The motion worker expires stale movement targets after 200 ms. |
 | P2 | Two-finger scrolling feels much too slow. | Following live feedback, the default wheel step is now 300 clicks per accepted gesture, exactly 100x the previous value of 3. This is intentionally aggressive and remains configurable. |
 | P2 | Stale scroll/volume action fires after pose changes, including during pinch. | Non-cursor actions require agreement between the current and confirmed gesture. Pinch and its release guard suppress these actions. |
@@ -33,6 +33,13 @@ its cause and its fix, plus what the next live run has to re-verify. The face
 detection gate is the one item that still needs a live check: it is built from
 MediaPipe confidence floors and geometry plausibility, not from a captured
 false positive.
+
+A second pass that same day fixed what the first pass got wrong: the
+plausibility gate demanded the whole palm inside the frame, which threw away
+exactly the frames that reach the taskbar and left the bottom unreachable. The
+verdict is now split — moving the cursor needs the index fingertip, while
+pinch/click/drag/scroll need the whole palm, because the pinch ratio is measured
+against the palm span.
 
 ## Verification
 

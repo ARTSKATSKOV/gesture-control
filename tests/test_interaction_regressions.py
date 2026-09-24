@@ -88,9 +88,30 @@ def test_bottom_of_the_screen_is_reached_with_the_palm_still_in_frame():
             continue
         landmarks[index] = land(landmarks[index].x, landmarks[index].y + 0.2)
     shifted = Hand(landmarks=tuple(landmarks), handedness="Right", score=1.0)
-    assert assess_hand(shifted, config.tracking).usable
+    verdict = assess_hand(shifted, config.tracking)
+    assert verdict.pointer_ok and verdict.full
     smoother = CursorSmoother(CursorConfig(smoothing_alpha=1, dead_zone=0), (1280, 960))
     assert smoother.update((0.5, tip_y))[1] == 959
+
+
+def test_a_hand_reaching_for_the_bottom_is_not_treated_as_lost():
+    """The live gap: reaching the taskbar lowers the palm, not the fingertip.
+
+    A palm outside the frame must not stop the cursor (the reported symptom was
+    an unreachable bottom), and it must not click either.
+    """
+    from src.tracking_quality import assess_hand
+
+    config = AppConfig.defaults()
+    verdict = assess_hand(_palm_up(y_offset=0.0), config.tracking)
+    assert verdict.pointer_ok and verdict.full
+    low_palm = list(_palm_up().landmarks)
+    low_palm[LI.WRIST] = land(WRIST_X, 1.05)
+    low_palm[LI.MIDDLE_FINGER_MCP] = land(WRIST_X + 0.01, 1.0)
+    hand = Hand(landmarks=tuple(low_palm), handedness="Right", score=1.0)
+    verdict = assess_hand(hand, config.tracking)
+    assert verdict.pointer_ok, "the falling palm must not freeze the cursor"
+    assert not verdict.full, "an extrapolated palm must not be allowed to click"
 
 
 def test_drag_uses_knuckle_and_ignores_curling_tip():

@@ -175,15 +175,16 @@ class GestureClassifier:
     def __init__(self, pinch: PinchConfig) -> None:
         self._pinch_detector = PinchDetector(threshold=pinch.threshold)
 
-    def classify(self, hand: Hand | None, motion_blurred: bool = False) -> FrameGesture:
-        """Classify one frame; ``motion_blurred`` freezes the pinch decision.
+    def classify(self, hand: Hand | None, decide_pinch: bool = True) -> FrameGesture:
+        """Classify one frame; ``decide_pinch=False`` freezes the pinch decision.
 
-        On a fast throw the landmarks smear and the thumb/index ratio collapses,
-        which used to read as a pinch and produced a freeze plus a click. A
-        blurred frame leaves the pinch detector untouched and reports no pinch;
-        the loop also skips the debounce and the state machine on such a frame,
-        so it can neither start nor end a pinch. The cursor still follows the
-        posture of a throw, and a button that is already held stays held.
+        Two live cases need that: a fast throw smears the landmarks until the
+        thumb/index ratio collapses (it used to read as a pinch, freezing the
+        cursor and landing a click), and a hand reaching for the screen edge has
+        its palm partly outside the frame, where the ratio is extrapolated. On
+        such a frame the detector is left untouched and no pinch is reported;
+        the loop also skips the debounce and the state machine, so it can
+        neither start nor end a pinch. Movement is unaffected.
         """
         if hand is None or len(hand.landmarks) < 21:
             self._pinch_detector.reset()
@@ -195,8 +196,8 @@ class GestureClassifier:
             )
         landmarks = hand.landmarks
         ratio = pinch_ratio_of(landmarks)
-        if motion_blurred:
-            # The detector is deliberately left untouched: a smeared frame must
+        if not decide_pinch:
+            # The detector is deliberately left untouched: this frame must
             # neither start nor end a pinch. The loop skips the debounce and the
             # state machine on such a frame, so this is not a release either.
             pinch_active = False

@@ -14,7 +14,8 @@ from src.tracking_quality import (
     LOW_CONFIDENCE,
     NO_HAND,
     OK,
-    OUT_OF_FRAME,
+    PALM_OUT,
+    POINTER_OUT,
     MotionGuard,
     assess_hand,
     pointer_of,
@@ -32,65 +33,84 @@ def moved(dx=0.0, dy=0.0, score=1.0):
 class TestAssessHand:
     def test_missing_hand_is_not_usable(self):
         verdict = assess_hand(None, CONFIG)
-        assert not verdict.usable
+        assert not verdict.pointer_ok
+        assert not verdict.full
         assert verdict.reason == NO_HAND
 
     def test_incomplete_landmark_set_is_not_usable(self):
         short = Hand(landmarks=moved().landmarks[:20], handedness="Right")
         assert assess_hand(short, CONFIG).reason == NO_HAND
 
-    def test_a_well_tracked_hand_is_usable(self):
+    def test_a_well_tracked_hand_may_move_and_act(self):
         verdict = assess_hand(moved(), CONFIG)
-        assert verdict.usable
+        assert verdict.pointer_ok
+        assert verdict.full
         assert verdict.reason == OK
 
     def test_low_handedness_score_is_rejected(self):
         """A face reported as a hand scores poorly; a real hand does not."""
         verdict = assess_hand(moved(score=0.4), CONFIG)
-        assert not verdict.usable
+        assert not verdict.pointer_ok
         assert verdict.reason == LOW_CONFIDENCE
 
     def test_degenerate_palm_is_rejected(self):
         """A tracker that collapses every landmark reports an unusable hand."""
         collapsed = [Landmark(0.5, 0.5) for _ in range(21)]
         verdict = assess_hand(Hand(landmarks=tuple(collapsed), handedness="Right"), CONFIG)
-        assert not verdict.usable
+        assert not verdict.pointer_ok
         assert verdict.reason == IMPLAUSIBLE_PALM
 
     def test_implausibly_large_hand_is_rejected(self):
         huge = synthetic_hand(scale=6.0)
         verdict = assess_hand(Hand(landmarks=huge.landmarks, handedness="Right"), CONFIG)
-        assert not verdict.usable
+        assert not verdict.pointer_ok
         assert verdict.reason == IMPLAUSIBLE_PALM
 
     @pytest.mark.parametrize("dy", [1.0, 1.2])
-    def test_extrapolated_hand_below_the_frame_is_rejected(self, dy):
+    def test_extrapolated_hand_below_the_frame_cannot_move_at_all(self, dy):
         """This is the shape MediaPipe returns while the hand leaves the frame."""
         verdict = assess_hand(moved(dy=dy), CONFIG)
-        assert not verdict.usable
-        assert verdict.reason == OUT_OF_FRAME
+        assert not verdict.pointer_ok
+        assert not verdict.full
+        assert verdict.reason == POINTER_OUT
 
-    @pytest.mark.parametrize("dx", [-0.5, -0.6])
-    def test_hand_at_the_side_border_is_rejected(self, dx):
-        verdict = assess_hand(moved(dx=dx), CONFIG)
-        assert not verdict.usable
-        assert verdict.reason == OUT_OF_FRAME
+    @pytest.mark.parametrize("dx", [-0.45, -0.5])
+    def test_hand_at_the_side_border_can_still_move_the_cursor(self, dx):
+        """Only the palm left the frame; the fingertip is still observed."""
+        hand = moved(dx=dx)
+        assert hand.landmarks[LI.INDEX_FINGER_TIP].x >= 0.02
+        verdict = assess_hand(hand, CONFIG)
+        assert verdict.pointer_ok
+        assert not verdict.full
+        assert verdict.reason == PALM_OUT
 
-    def test_hand_inside_the_frame_but_in_the_border_margin_is_rejected(self):
+    @pytest.mark.parametrize("dy", [0.5, 0.6])
+    def test_hand_reaching_for_the_bottom_can_still_move_the_cursor(self, dy):
+        """The posture that reaches the taskbar: palm low, fingertip in frame.
+
+        Refusing these frames is what made the bottom of the screen unreachable
+        in the 2026-09-24 live run.
+        """
+        verdict = assess_hand(moved(dy=dy), CONFIG)
+        assert verdict.pointer_ok
+        assert not verdict.full
+        assert verdict.reason == PALM_OUT
+
+    def test_hand_inside_the_frame_but_in_the_border_margin_is_not_full(self):
         """The wrist sits at 0.99: still inside the frame, already untrustworthy."""
         hand = moved(dy=0.49)
         assert hand.landmarks[LI.WRIST].y < 1.0
         verdict = assess_hand(hand, CONFIG)
-        assert not verdict.usable
-        assert verdict.reason == OUT_OF_FRAME
+        assert verdict.pointer_ok
+        assert not verdict.full
 
-    def test_a_folded_finger_clipping_the_edge_is_still_usable(self):
+    def test_a_folded_finger_clipping_the_edge_is_still_full(self):
         """The gate watches the anchors, not all twenty-one landmarks."""
         landmarks = list(moved().landmarks)
         landmarks[LI.PINKY_TIP] = Landmark(0.99, 0.99)
         landmarks[LI.MIDDLE_FINGER_TIP] = Landmark(0.0, 0.0)
         hand = Hand(landmarks=tuple(landmarks), handedness="Right", score=1.0)
-        assert assess_hand(hand, CONFIG).usable
+        assert assess_hand(hand, CONFIG).full
 
 
 class TestPointerOf:

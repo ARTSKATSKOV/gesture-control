@@ -36,7 +36,7 @@
     "smoothing_alpha": 0.12,
     "dead_zone": 5.0,
     "overscan": 1.5,
-    "overscan_y": 2.5,
+    "overscan_y": 3.0,
     "drag_sensitivity": 1.4,
     "pinch_guard_ratio": 0.65,
     "pinch_release_ms": 180

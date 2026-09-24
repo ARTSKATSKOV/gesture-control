@@ -52,7 +52,7 @@ def draw_overlay(frame: np.ndarray, state: OverlayState, hand: Hand | None = Non
         (f"Status: {status}", status_color),
     ]
     if cursor is not None:
-        lines.append(("Green: cursor | Red: hand", (255, 255, 255)))
+        lines.append(("Green: fingertip->cursor | Red: hand", (255, 255, 255)))
     if state.tracking:
         usable = state.tracking == "ok"
         color = (0, 200, 0) if usable else (0, 165, 255)

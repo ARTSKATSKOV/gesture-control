@@ -20,7 +20,7 @@ class TestDefaults:
         assert cfg.cursor.smoothing_alpha == pytest.approx(0.12)
         assert cfg.cursor.dead_zone == pytest.approx(5.0)
         assert cfg.cursor.overscan == pytest.approx(1.5)
-        assert cfg.cursor.overscan_y == pytest.approx(2.5)
+        assert cfg.cursor.overscan_y == pytest.approx(3.0)
         assert cfg.cursor.drag_sensitivity == pytest.approx(1.4)
         assert cfg.cursor.pinch_guard_ratio == pytest.approx(0.65)
         assert cfg.cursor.pinch_release_ms == 180
@@ -113,7 +113,7 @@ class TestErrors:
             {"cursor": {"overscan": 0.99}},
             {"cursor": {"overscan": 3.01}},
             {"cursor": {"overscan_y": 0.99}},
-            {"cursor": {"overscan_y": 3.01}},
+            {"cursor": {"overscan_y": 4.01}},
             {"tracking": {"frame_margin": 0.5}},
             {"tracking": {"frame_margin": -0.1}},
             {"tracking": {"min_hand_score": 1.5}},
