@@ -12,6 +12,7 @@ from src.hand_tracker import (
     distance,
     draw_hand,
     hand_size,
+    hands_from_detections,
     landmarks_to_pixels,
     select_active_hand,
 )
@@ -97,6 +98,21 @@ class TestSelection:
             "Left",
             "Right",
         }
+
+
+class TestDetectionParsing:
+    def test_missing_handedness_category_is_ignored(self):
+        landmark = type("Lm", (), {"x": 0.2, "y": 0.3, "z": 0.0})()
+        assert hands_from_detections([[landmark] * NUM_LANDMARKS], [[]], True) == []
+
+    def test_selfie_frame_flips_the_detected_label(self):
+        landmark = type("Lm", (), {"x": 0.2, "y": 0.3, "z": 0.0})()
+        category = type("Cat", (), {"category_name": "Left", "score": 0.8})()
+        hands = hands_from_detections([[landmark] * NUM_LANDMARKS], [[category]], True)
+        assert len(hands) == 1
+        assert hands[0].handedness == "Right"
+        assert hands[0].score == pytest.approx(0.8)
+        assert len(hands[0].landmarks) == NUM_LANDMARKS
 
 
 class TestHandednessCorrection:

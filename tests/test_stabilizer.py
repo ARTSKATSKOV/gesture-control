@@ -53,6 +53,17 @@ class TestPinchDebounce:
         assert self.debounce.state is False
         assert self.debounce.update(True) is False
 
+    def test_clear_pending_drops_a_partial_transition_only(self):
+        self.debounce.update(True)
+        self.debounce.clear_pending()
+        assert self.debounce.update(True) is False
+        self.debounce.update(True)
+        assert self.debounce.update(True) is True
+        assert self.debounce.update(False) is True
+        self.debounce.clear_pending()
+        assert self.debounce.state is True
+        assert self.debounce.update(False) is True
+
     def test_invalid_frames_count_raises(self):
         with pytest.raises(ValueError):
             PinchDebounce(frames=0)

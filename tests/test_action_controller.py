@@ -156,6 +156,48 @@ class TestMouseActions:
         assert position == (250, 400)
         assert self.mouse.calls == [("move", 250, 400)]
 
+    def test_non_point_pose_keeps_in_flight_motion_alive(self):
+        class Mouse(FakeMouse):
+            def __init__(self):
+                super().__init__()
+                self.frozen = 0
+                self.held = 0
+
+            def freeze(self):
+                self.frozen += 1
+
+            def hold(self):
+                self.held += 1
+
+        mouse = Mouse()
+        controlled = controller(mouse)
+        controlled.process(frame(Gesture.POINT, (0.3, 0.3)))
+        controlled.process(frame(Gesture.OPEN_PALM, (0.8, 0.8)))
+        assert [call[0] for call in mouse.calls] == ["move"]
+        assert mouse.frozen == 0
+        assert mouse.held == 1
+
+    def test_pinch_still_cancels_in_flight_motion(self):
+        class Mouse(FakeMouse):
+            def __init__(self):
+                super().__init__()
+                self.frozen = 0
+                self.held = 0
+
+            def freeze(self):
+                self.frozen += 1
+
+            def hold(self):
+                self.held += 1
+
+        mouse = Mouse()
+        controlled = controller(mouse)
+        controlled.process(frame(Gesture.POINT, (0.3, 0.3)))
+        controlled.process(frame(Gesture.PINCH, (0.8, 0.8)))
+        assert mouse.frozen >= 1
+        assert mouse.held == 0
+        assert [call[0] for call in mouse.calls] == ["move"]
+
     def test_raw_pinch_does_not_move_point_cursor(self):
         pinch_frame = FrameGesture(
             gesture=Gesture.POINT,

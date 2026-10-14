@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
 
+import cv2
 import numpy as np
 import pytest
 
@@ -92,6 +93,12 @@ def running_loop(*, reads, window, keys=NO_KEY):
 def frames(count: int) -> list[tuple[bool, np.ndarray]]:
     image = np.zeros((480, 640, 3), dtype=np.uint8)
     return [(True, image) for _ in range(count)]
+
+
+def test_run_requests_a_shallow_camera_buffer():
+    with running_loop(reads=frames(1), window=window_values(1.0), keys=ESC) as doubles:
+        run(AppConfig.defaults())
+    doubles.camera.set.assert_any_call(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 
 def test_run_returns_when_the_preview_window_is_closed():

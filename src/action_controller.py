@@ -54,6 +54,9 @@ class PyAutoGuiBackend:
     def freeze(self):
         self.motion.freeze()
 
+    def hold(self):
+        self.motion.hold()
+
     def position(self):
         return tuple(pyautogui.position())
 
@@ -237,6 +240,11 @@ class ActionController:
         if freeze is not None:
             freeze()
 
+    def hold_pointer(self):
+        hold = getattr(self._mouse, "hold", None)
+        if hold is not None:
+            hold()
+
     @property
     def enabled(self) -> bool:
         return self._enabled
@@ -413,8 +421,10 @@ class ActionController:
         elif (frame.gesture is cursor_gesture and not near_pinch
               and timestamp >= self._cursor_blocked_until):
             self.move_pointer(frame.pointer)
-        else:
-            self.freeze_pointer()
+        elif not near_pinch and timestamp >= self._cursor_blocked_until:
+            # A single non-POINT frame (lifted middle finger, smear) used to
+            # cancel the in-flight easing. Keep the last fingertip instead.
+            self.hold_pointer()
 
         if near_pinch or timestamp < self._cursor_blocked_until:
             return

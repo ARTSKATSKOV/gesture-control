@@ -59,6 +59,17 @@ class CursorMotion:
             self._target = None
             self._last_tick = None
 
+    def hold(self):
+        """Keep the current target from expiring without moving it.
+
+        A one-frame pose flicker used to freeze the cursor, which threw away
+        the in-flight easing. Refreshing the timestamp lets that easing finish
+        at the last fingertip.
+        """
+        with self._lock:
+            if self._target is not None:
+                self._updated = self._clock()
+
     def tick(self, now=None):
         """One deterministic output step, also used by the worker and tests."""
         with self._lock:
