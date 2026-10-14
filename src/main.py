@@ -69,6 +69,28 @@ def _key_matches(key: int, configured: str) -> bool:
     return key == ord(normalized[0]) if normalized else False
 
 
+def tracking_frame(frame, track_width: int, track_height: int):
+    """Downscale a preview frame for the tracker without stretching it.
+
+    Landmarks are normalized to this image and then drawn on the preview, so
+    the two have to share an aspect ratio. Forcing ``track_width`` x
+    ``track_height`` turns a 16:9 camera into 4:3, and both the cursor and the
+    pinch distance come out wrong.
+    """
+    height, width = frame.shape[:2]
+    scale = min(track_width / float(width), track_height / float(height))
+    resized_width = max(1, int(round(width * scale)))
+    resized_height = max(1, int(round(height * scale)))
+    if resized_width == width and resized_height == height:
+        return frame
+    interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+    return cv2.resize(
+        frame,
+        (resized_width, resized_height),
+        interpolation=interpolation,
+    )
+
+
 def preview_visible() -> bool:
     """Whether the HighGUI preview window is currently on screen.
 
@@ -119,10 +141,17 @@ def run(config: AppConfig | None = None) -> None:
     enabled = True
     failed_reads = 0
     preview_shown = False
+    # True after a frame that was actually allowed to move the cursor. A fast
+    # throw often stops looking like POINT; the cursor should keep following
+    # that throw, and should not start following a scroll or a fist.
+    was_following = False
+    cursor_gesture = Gesture(config.mappings.cursor)
 
     try:
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.camera.width)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, config.camera.height)
+        # A deep driver queue shows an old frame, so the cursor trails the hand.
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         tracker = new_hand_tracker(config.hand, model_root=project_root)
         controller = ActionController(
             cursor=config.cursor,
@@ -138,6 +167,10 @@ def run(config: AppConfig | None = None) -> None:
                 pinch_debounce.reset()
                 stabilizer.reset()
                 classifier.classify(None)
+                # The next delivered frame must not be compared with a pointer
+                # from before the gap, or a reconnect looks like a throw.
+                motion_guard.reset()
+                was_following = False
                 failed_reads += 1
                 key = cv2.waitKey(1) & 0xFF
                 if _key_matches(key, config.hotkeys.quit):
@@ -152,10 +185,8 @@ def run(config: AppConfig | None = None) -> None:
                 continue
             failed_reads = 0
             frame = cv2.flip(frame, 1)
-            track_frame = cv2.resize(
-                frame,
-                (config.hand.track_width, config.hand.track_height),
-                interpolation=cv2.INTER_AREA,
+            track_frame = tracking_frame(
+                frame, config.hand.track_width, config.hand.track_height
             )
             hand = tracker.process(track_frame)
             # Two different questions, two different answers: moving the cursor
@@ -174,14 +205,19 @@ def run(config: AppConfig | None = None) -> None:
             if blurred:
                 # A smeared frame must neither start nor end a pinch: skipping
                 # the debounce and the state machine is what turns a fast throw
-                # from a stray click into nothing at all.
+                # from a stray click into nothing at all. A half-counted
+                # transition is dropped too, so the next settled frame cannot
+                # finish a pinch the smear started.
+                pinch_debounce.clear_pending()
                 stable_gesture = stabilizer.confirmed
                 pinch_event = PinchEvent.NONE
             elif not (enabled and verdict.full):
                 # The palm is outside the frame, or the app is disabled: no pinch
                 # may be decided, and a held mouse button has to be released.
+                # Extrapolated landmarks must not be learned as a gesture, or a
+                # hand leaving through the edge confirms a scroll on its way out.
                 pinch_debounce.reset()
-                stable_gesture = stabilizer.update(raw.gesture)
+                stable_gesture = stabilizer.confirmed
                 pinch_event = pinch_state.update(pinch_active=False, hand_present=False)
             else:
                 stable_gesture = stabilizer.update(raw.gesture)
@@ -193,15 +229,24 @@ def run(config: AppConfig | None = None) -> None:
                 else None
             )
             if control is not None and not decides_pinch:
-                # Such a frame may not freeze, click, scroll or drag by itself.
-                # The one thing it must not break is a button that is already
-                # down, and only a smeared frame may keep one: a palm that left
-                # the frame means the hand is going away.
+                # Such a frame may not click, scroll or drag by itself. The one
+                # thing it must not break is a button that is already down, and
+                # only a smeared frame may keep one: a palm that left the frame
+                # means the hand is going away. A throw that started as pointing
+                # keeps moving the cursor; any other pose becomes UNKNOWN so a
+                # smeared or extrapolated TWO_UP cannot scroll.
+                follow = control.gesture is cursor_gesture or (blurred and was_following)
                 control = replace(
                     control,
+                    gesture=cursor_gesture if follow else Gesture.UNKNOWN,
                     pinch_active=blurred and controller.drag_active,
                     pinch_ratio=float("inf"),
                 )
+            was_following = (
+                control is not None
+                and control.gesture is cursor_gesture
+                and not control.pinch_active
+            )
             controller.process(control, pinch_event)
 
             current_gesture = raw.gesture.value

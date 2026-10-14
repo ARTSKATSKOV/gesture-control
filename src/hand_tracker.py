@@ -122,6 +122,27 @@ def select_active_hand(hands: Sequence[Hand]) -> Optional[Hand]:
     )
 
 
+def hands_from_detections(hand_landmarks, handedness, selfie_mode: bool) -> list[Hand]:
+    """Pair each landmark list with its handedness label.
+
+    A detection with no category used to raise ``IndexError`` inside the camera
+    loop and tear the tracking session down.
+    """
+    hands: list[Hand] = []
+    for landmarks, categories in zip(hand_landmarks, handedness):
+        if not landmarks or not categories:
+            continue
+        category = categories[0]
+        hands.append(
+            Hand.from_mediapipe(
+                landmarks,
+                handedness=correct_handedness(category.category_name, selfie_mode),
+                score=float(category.score),
+            )
+        )
+    return hands
+
+
 def correct_handedness(label: str, selfie_mode: bool) -> str:
     """Flip Left/Right when the frame is mirrored.
 
@@ -183,19 +204,11 @@ class HandTracker:
         timestamp_ms = max(self._last_timestamp_ms + 1, round(self._clock() * 1000))
         self._last_timestamp_ms = timestamp_ms
         result = self._landmarker.detect_for_video(image, timestamp_ms)
-        hands = [
-            Hand.from_mediapipe(
-                landmarks,
-                handedness=correct_handedness(
-                    categories[0].category_name, self._selfie_mode
-                ),
-                score=categories[0].score,
+        return select_active_hand(
+            hands_from_detections(
+                result.hand_landmarks, result.handedness, self._selfie_mode
             )
-            for landmarks, categories in zip(
-                result.hand_landmarks, result.handedness
-            )
-        ]
-        return select_active_hand(hands)
+        )
 
     def close(self) -> None:
         self._landmarker.close()

@@ -19,9 +19,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from src.config import AppConfig
-from src.hand_tracker import Hand, LandmarkIndex as LI
+from src.hand_tracker import Hand, Landmark, LandmarkIndex as LI
 from src.main import run
-from src.stabilizer import PinchStateMachine
+from src.stabilizer import PinchStateMachine, TemporalStabilizer
 from src.tracking_quality import MotionGuard
 from test_action_controller import FakeMouse, controller
 from test_hand_tracker import synthetic_hand
@@ -82,6 +82,10 @@ def drive(script, mouse=None):
          patch("src.main.MotionGuard",
                return_value=MotionGuard(config.tracking,
                                         clock=lambda: timestamp[0])), \
+         patch("src.main.TemporalStabilizer",
+               side_effect=lambda cfg, clock=None: TemporalStabilizer(
+                   cfg, clock=lambda: timestamp[0]
+               )), \
          patch("src.main.draw_overlay") as overlay, \
          patch("src.main.cv2.imshow"), \
          patch("src.main.cv2.destroyAllWindows"), \
@@ -126,6 +130,79 @@ def test_a_fast_throw_cannot_click_but_still_moves_the_cursor():
     assert "down" not in actions
     assert "up" not in actions
     assert "move" in actions, "the cursor must still follow the throw"
+
+
+def two_down_hand(dy=0.0):
+    """Index and middle point down; the other fingers stay folded at the wrist."""
+    points = [Landmark(0.50, 0.40 + dy) for _ in range(21)]
+
+    def put(index, x, y):
+        points[index] = Landmark(x, y + dy)
+
+    put(LI.INDEX_FINGER_MCP, 0.48, 0.48)
+    put(LI.INDEX_FINGER_PIP, 0.48, 0.56)
+    put(LI.INDEX_FINGER_DIP, 0.48, 0.62)
+    put(LI.INDEX_FINGER_TIP, 0.48, 0.70)
+    put(LI.MIDDLE_FINGER_MCP, 0.53, 0.48)
+    put(LI.MIDDLE_FINGER_PIP, 0.53, 0.56)
+    put(LI.MIDDLE_FINGER_DIP, 0.53, 0.62)
+    put(LI.MIDDLE_FINGER_TIP, 0.53, 0.70)
+    put(LI.THUMB_CMC, 0.46, 0.42)
+    put(LI.THUMB_MCP, 0.42, 0.40)
+    put(LI.THUMB_IP, 0.40, 0.36)
+    put(LI.THUMB_TIP, 0.38, 0.32)
+    return Hand(landmarks=tuple(points), handedness="Right", score=1.0)
+
+
+def _scroll_count(run_result) -> int:
+    return run_result.actions().count("scroll")
+
+
+def test_a_palm_leaving_the_frame_cannot_scroll():
+    """An extrapolated two-finger pose used to keep wheeling the page."""
+    settled = [two_down_hand()] * 8
+    leaving = [two_down_hand(dy=-0.50)] * 4
+    parked = [hand()] * 4
+    while_leaving = drive(settled + leaving)
+    while_pointing = drive(settled + parked)
+    assert _scroll_count(while_pointing) > 0, "an in-frame two-down pose must scroll"
+    assert _scroll_count(while_leaving) == _scroll_count(while_pointing)
+    assert "palm out" in while_leaving.overlay_states()[-1].tracking
+    assert "click" not in while_leaving.actions()
+
+
+def test_palm_out_frames_do_not_arm_a_scroll_for_the_next_good_frame():
+    """Frames with the wrist already gone must not fill the gesture window."""
+    armed = [two_down_hand(dy=-0.50)] * 8
+    # The jump back into frame is blurred; the frames after it are stationary.
+    returned = [two_down_hand()] * 4
+    run_result = drive(armed + returned)
+    assert _scroll_count(run_result) == 0
+    assert any("palm out" in state.tracking for state in run_result.overlay_states())
+
+
+def test_a_blurred_throw_keeps_moving_when_the_pose_is_no_longer_point():
+    """A fast open palm used to freeze the cursor because it is not POINT."""
+    thrown_open_palm = synthetic_hand(dx=0.28)
+    run_result = drive([hand(), thrown_open_palm])
+    moves = [call for call in run_result.mouse.calls if call[0] == "move"]
+    assert len(moves) >= 2
+    assert moves[-1][1] > moves[0][1] + 100
+    assert "click" not in run_result.actions()
+    assert run_result.overlay_states()[-1].motion_blurred is True
+
+
+def test_a_smeared_frame_does_not_finish_a_half_confirmed_pinch():
+    """One pinched frame, a throw, then one more pinch must not click."""
+    frames = [
+        hand(pinch=True),
+        hand(dx=0.28, pinch=True),
+        hand(dx=0.28, dy=0.02, pinch=True),
+        hand(dx=0.28, dy=0.02),
+    ]
+    run_result = drive(frames)
+    assert "click" not in run_result.actions()
+    assert "down" not in run_result.actions()
 
 
 def test_a_slow_pinch_still_clicks():

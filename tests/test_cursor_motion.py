@@ -41,6 +41,20 @@ def test_freeze_cancels_pending_motion_without_a_final_jump():
     assert calls == before
 
 
+def test_hold_keeps_a_target_from_expiring_without_moving_it():
+    output, calls, clock = motion()
+    output.target(400, 100)
+    clock[0] = 0.19
+    output.hold()
+    clock[0] = 0.30
+    output.tick()
+    assert output._target == (400, 100)
+    assert calls, "the easing toward the held target must still run"
+    output.freeze()
+    output.hold()
+    assert output._target is None
+
+
 def test_stalled_camera_expires_target():
     output, calls, clock = motion()
     output.target(800, 700)

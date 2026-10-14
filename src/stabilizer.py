@@ -123,6 +123,14 @@ class PinchDebounce:
                 self._count = 0
         return self._state
 
+    def clear_pending(self) -> None:
+        """Drop a transition that has not committed yet.
+
+        A smeared frame must not count toward confirming or releasing a pinch.
+        The committed state stays, so an active drag is not dropped.
+        """
+        self._count = 0
+
     def reset(self) -> None:
         self._state = False
         self._count = 0

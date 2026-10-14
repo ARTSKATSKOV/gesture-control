@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from src.config import CameraConfig, CursorConfig
-from src.main import FpsCounter, _key_matches, open_camera
+from src.main import FpsCounter, _key_matches, open_camera, tracking_frame
 from src.overlay import OverlayState, draw_overlay
 
 
@@ -44,6 +44,16 @@ class TestFpsCounter:
         counter.tick()
         assert counter.tick() == 0.0
         assert counter.tick() == 0.0
+
+
+class TestTrackingFrame:
+    def test_four_by_three_frame_uses_the_configured_size(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        assert tracking_frame(frame, 256, 192).shape[:2] == (192, 256)
+
+    def test_widescreen_frame_is_not_stretched(self):
+        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+        assert tracking_frame(frame, 256, 192).shape[:2] == (144, 256)
 
 
 class TestOverlay:
